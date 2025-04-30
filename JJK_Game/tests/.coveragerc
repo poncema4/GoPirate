@@ -1,0 +1,7 @@
+[run]
+branch = True
+source = Mini Project 1
+omit =
+    Mini Project 1/battle_manager.py
+    Mini Project 1/jjk_game.py
+    Mini Project 1/user_interface.py

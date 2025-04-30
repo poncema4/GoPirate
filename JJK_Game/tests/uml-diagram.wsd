@@ -1,0 +1,180 @@
+@startuml jjk_game
+
+' ABC abstract StatusEffect class
+abstract class StatusEffect {
+    + __init__(self, duration: int)
+    ' Property
+    - duration:
+    ' Setter
+    + duration: int
+    + handle(player: Character)
+    - is_active():
+}
+
+' Subclass Poison(StatusEffect)
+class Poison {
+    + __init__(self, damage: int, duration: int)
+    - damage: int
+    + handle(player: Character)
+}
+
+' Subclass Stun(StatusEffect)
+class Stun {
+    + __init__(self, duration: int)
+    + handle(player: Character)
+}
+
+StatusEffect <|-- Poison
+StatusEffect <|-- Stun
+
+' ABC abstract Character class
+abstract class Character {
+    + __init__(self, name: str, hp: int, attack_move: Attack, defense_move: Defend, special_move: SpecialMove)
+    ' Property 
+    - name: 
+    - hp: 
+    - attacker_damage: 
+    - defense:
+    - special_move:
+    - stun:
+    - poison:
+    ' Setter
+    + hp: int
+    - attack_move: Attack
+    - defense_move: Defend
+    - special_move: SpecialMove
+    - stun: Stun
+    - poison: Poison
+    - is_alive():
+    - get_description():
+    + attack(target: Character)
+    - defend():
+    - handle_defense_boost():
+    + special(targets: list[Character], turn: int)
+    - handle_poison():
+    - handle_stun():
+}
+
+' Subclasses for Character
+class Gojo {
+    + __init__(self):
+    - Red: Attack
+    - Limitless: Defend
+    - UnlimitedVoid: SpecialMove
+}
+
+class Sukuna {
+    + __init__(self):
+    - Dismantle: Attack
+    - FallingBlossomEmotion: Defend
+    - MalevolentShrine: SpecialMove
+}
+
+class Megumi {
+    + __init__(self):
+    - DivineDogs: Attack
+    - RabbitEscape: Defend
+    - Mahoraga: SpecialMove
+}
+
+class Nanami {
+    + __init__(self):
+    - RatioTechnique: Attack
+    - Block: Defend
+    - Overtime: SpecialMove
+}
+
+class Nobara {
+    + __init__(self):
+    - Hairpin: Attack
+    - StrawDoll: Defend
+    - Resonance: SpecialMove
+}
+
+Character <|-- Gojo
+Character <|-- Sukuna
+Character <|-- Megumi
+Character <|-- Nanami
+Character <|-- Nobara
+
+' ABC abstract Action class
+abstract class Action {
+    + __init__(self, name: str, description: str, voiceline: str)
+    ' Property
+    - name: str
+    - description: str
+    - voiceline: str
+    + apply(*args, **kwargs)
+}
+
+class Attack {
+    + __init__(self, damage: int, name: str, description: str, voiceline: str)
+    - super().__init__(name, description, voiceline)
+    ' Property
+    - damage: int
+    + apply(attacker: Character, defender: Character)
+}
+
+class Defend {
+    + __init__(self, name: str, description: str, base_defense: int, boost: int)
+    - super().__init__(name, description, "")
+    ' Property
+    - boost: int
+    - base_defense: int
+    - current_defense: int
+    ' Setters
+    + current_defense: defense: int
+    - is_boost_active():
+    + apply():
+}
+
+class SpecialMove {
+    + __init__(self, name: str, description: str, voiceline: str, cooldown: int)
+    - super().__init__(name, description, voiceline)
+    ' Property
+    - cooldown: int
+    - last_used: int
+    ' Setters
+    + cooldown: value: int
+    + last_used: value: int
+    + is_available(turn: int): bool
+    + apply(targets: List<Character>)
+}
+
+Action <|-- Attack
+Action <|-- Defend
+Action <|-- SpecialMove
+
+' BattleManager class
+class BattleManager {
+    + __init__(self):
+    - select_players():
+    - play_turn():
+    - handle_player_actions(player: Character)
+    - is_battle_over():
+    - choose_target(attacker: Character)
+    - start_battle():
+}
+
+' UserInterface class
+class UserInterface {
+    + get_valid_input(message: str, error_message: str, choices: List<str>)
+}
+
+' jjk_game python file
+metaclass jjk_game {
+    + __name__ == "__main__"
+    - BattleManager().start_battle()
+}
+
+BattleManager --> Character : import
+BattleManager --> Action : import
+BattleManager --> UserInterface : import
+UserInterface ..> BattleManager : interacts
+
+StatusEffect <-- Character : import
+Action <-- Character : import
+
+jjk_game --> BattleManager : run
+
+@enduml
