@@ -1,0 +1,186 @@
+@startuml chat_bot
+
+' Fonts and Packages for Readability
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam monochrome false
+skinparam classFontStyle bold
+skinparam packageStyle rectangle
+skinparam packageFontSize 20
+skinparam linetype ortho
+
+' Services Available
+package "Services" {
+    class OrderService {
+        + track_order(order_id: str): str
+    }
+    
+    class RefundService {
+        + process_refund(order_id: str, reason: Optional[str]): str
+    }
+    
+    class ProductService {
+        - products: List[str]
+        + __init__() -> self.products: List[str]
+        + check_availability(product_name: str): str
+        + get_product_list(): List[str]
+        + extract_product_name(query: str): Optional[str]
+    }
+    
+    class LiveAgentService {
+        + connect(): str
+    }
+}
+
+' BackendManager able to access all of the services available
+BackendManager <|-- "Services"
+
+' Adapter Pattern
+class BackendManager {
+    - order_service: OrderService
+    - refund_service: RefundService
+    - product_service: ProductService
+    - live_agent_service: LiveAgentService
+    + process_request(request_type: str, *args: Any): str
+    + get_product_service(): ProductService
+}
+
+note "Adapter Pattern" as AdapterNote
+AdapterNote .. BackendManager
+
+' Query/Data Management
+class QueryDatabase {
+    - queries: Dict
+    + __init__(filepath: Optional[str])
+    + get_response(user_input: str): Optional[str]
+}
+
+' Session Management 
+class SessionManager {
+    - sessions: Dict
+    + get(key: str, default)
+    + set(key: str, value): None
+    + pop(key: str, default)
+    + add_to_history(message: str): None
+}
+
+' Strategy Pattern
+abstract class QueryHandler {
+    {abstract} + handle(query: str, backend_manager: BackendManager, session_manager: SessionManager): str
+}
+package "Handlers" {
+    class OrderTrackingHandler {
+        + handle(query: str, backend_manager: BackendManager, session_manager: SessionManager): str
+    }
+
+    class RefundHandler {
+        + handle(query: str, backend_manager: BackendManager, session_manager: SessionManager): str
+    }
+
+    class RefundReasonHandler {
+        + handle(query: str, backend_manager: BackendManager, session_manager: SessionManager): str
+    }
+
+    class ProductAvailabilityHandler {
+        + handle(query: str, backend_manager: BackendManager, session_manager: SessionManager): str
+    }
+
+    class LiveAgentHandler {
+        + handle(query: str, backend_manager: BackendManager, session_manager: SessionManager): str
+    }
+
+    class DefaultHandler {
+        + handle(query: str, backend_manager: BackendManager, session_manager: SessionManager): str
+    }
+}
+
+note "Strategy Pattern" as StrategyNote
+StrategyNote .. QueryHandler
+
+' Observer Pattern
+abstract class Observer {
+    {abstract} + alert(message: str): None
+}
+
+class LiveAgentObserver {
+    + alert(message: str): None
+}
+
+class LiveAgentNotifier {
+    - _observers: List[Observer] = []
+    {static} + add_observer(observer: Observer): None
+    {static} + notify_agents(message: str): None
+}
+
+note "Observer Pattern" as ObserverNote
+ObserverNote .. Observer
+
+Observer o-- LiveAgentObserver
+Observer o-- LiveAgentNotifier
+Observer o-- SentimentAnalyzer
+
+' Flyweight Pattern
+class ResponseFactory {
+    -_response_pools: Dict[str, List[str]]
+    {static} + get_random_response(category: str): str
+}
+
+note "Flyweight Pattern" as FlyweightNote
+FlyweightNote .. ResponseFactory
+
+' Factory Pattern
+class QueryManager {
+    - handlers: Dict[str, QueryHandler] = {"order": OrderTrackingHandler(),
+                                        "refund": RefundHandler(),
+                                        "refund_reason": RefundReasonHandler(),
+                                        "product": ProductAvailabilityHandler(),
+                                        "live_agent": LiveAgentHandler()}
+    + get_handler(query_type: str): QueryHandler
+}
+
+note "Factory Pattern" as FactoryNote
+FactoryNote .. QueryManager
+
+' Intent Recognition
+class IntentRecognitionService {
+    - _intent_phrases: Dict[str, List[str]] -> synonym words/phrases
+    + recognize_intent(user_input: str, product_list: List[str], queries: Dict): str
+}
+
+class SentimentAnalyzer {
+    - negative_words: List[str]
+    - strong_negative_phrases: List[str]
+    + detect_negative_sentiment(user_input: str): bool
+}
+
+' Facade Pattern
+class Chatbot {
+    - query_db: QueryDatabase
+    - backend_manager: BackendManager
+    - query_manager: QueryManager
+    - session_manager: SessionManager
+    - intent_service: IntentRecognitionService
+    - sentiment_analyzer: SentimentAnalyzer
+    + reset_session(): 
+    + get_conversation_history()
+    + process_query(query):
+}
+
+note "Facade Pattern" as FacadeNote
+FacadeNote .. Chatbot
+
+Chatbot *-- BackendManager
+Chatbot *-- QueryHandler
+Chatbot *-- SessionManager
+
+QueryManager <|-- Handlers
+QueryManager --o QueryHandler
+QueryDatabase --o QueryHandler
+
+IntentRecognitionService --o ResponseFactory
+
+ResponseFactory --o QueryHandler
+
+Chatbot *-- Observer
+
+@enduml

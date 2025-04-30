@@ -1,0 +1,7 @@
+[run]
+branch = True
+source = Chat_Bot
+omit =
+    Chat_Bot/chat_bot.py
+    Chat_Bot/queries.json
+    Chat_Bot/test_chat_bot.py
