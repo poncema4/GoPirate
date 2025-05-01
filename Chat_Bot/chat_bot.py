@@ -305,7 +305,7 @@ class ResponseFactory:
         ],
         "default_response": [
             "I'm not sure about that. Let me check with our team and get back to you.",
-            "I don't have that information at the moment. PLease try asking something else.",
+            "I don't have that information at the moment. Please try asking something else.",
             "That's beyond my current knowledge. Let me make a note for our support team.",
             "I'll need to research that further. Can I help with something else in the meantime?"
         ],

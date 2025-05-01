@@ -25,8 +25,6 @@ class GameManager:
         self.characters = [self.factory.create_character(name) for name in self.character_names]
         self.battle_manager = BattleManager(self.characters)
         self.game_started = True
-        self.output("Welcome to Jujutsu Kaisen Battle Game!")
-        self.output("Choose your characters to begin...")
         self.select_players()
         
     def select_players(self):

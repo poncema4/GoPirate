@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, scrolledtext
+from tkinter import ttk, scrolledtext, messagebox
 import socket
 import threading
 import json
@@ -22,6 +22,8 @@ class UnifiedClient:
         # Network setup
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.player_name = None
+        self.username = None
+        self.connected_players = set()
         
         # Main container using grid
         self.setup_layout()
@@ -52,7 +54,7 @@ class UnifiedClient:
         game_frame = ttk.LabelFrame(self.left_panel, text="JJK Game")
         game_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         
-        self.game_display = scrolledtext.ScrolledText(game_frame)
+        self.game_display = scrolledtext.ScrolledText(game_frame, state='disabled')  # Make read-only
         self.game_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         controls_frame = ttk.Frame(game_frame)
@@ -80,7 +82,7 @@ class UnifiedClient:
         chatbot_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         
         self.chatbot = Chatbot()
-        self.chatbot_display = scrolledtext.ScrolledText(chatbot_frame)
+        self.chatbot_display = scrolledtext.ScrolledText(chatbot_frame, state='disabled')  # Make read-only
         self.chatbot_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         self.chatbot_input = ttk.Entry(chatbot_frame)
@@ -94,28 +96,37 @@ class UnifiedClient:
         self.chat_display = scrolledtext.ScrolledText(chat_frame)
         self.chat_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        self.chat_input = ttk.Entry(chat_frame)
-        self.chat_input.pack(fill=tk.X, padx=5, pady=5)
+        # Configure tags for different message types
+        self.chat_display.tag_configure('self', foreground='green')
+        self.chat_display.tag_configure('other', foreground='blue')
+        self.chat_display.tag_configure('system', foreground='red')
+        
+        input_frame = ttk.Frame(chat_frame)
+        input_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.chat_input = ttk.Entry(input_frame)
+        self.chat_input.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.chat_input.bind('<Return>', self.handle_chat_input)
+        
+        send_button = ttk.Button(input_frame, text="Send", command=lambda: self.handle_chat_input(None))
+        send_button.pack(side=tk.RIGHT, padx=(5, 0))
 
     def connect_to_server(self, host='localhost', port=12345):
         try:
             self.client_socket.connect((host, port))
             self.player_name = self.get_player_name()
+            self.username = self.player_name
             
-            # Send initial join message
-            join_msg = {
-                'type': 'join',
-                'name': self.player_name
-            }
-            self.send_message(join_msg)
+            # Send player name to server for registration
+            self.client_socket.send(f"JOIN:{self.player_name}".encode())
+            
+            # Announce player join
+            join_message = f"*** {self.username} has joined! ***"
+            self.client_socket.send(join_message.encode())
             
             # Start receiver thread
             self.receiver_thread = threading.Thread(target=self.receive_messages, daemon=True)
             self.receiver_thread.start()
-            
-            # Show welcome message
-            self.add_system_message(f"Welcome {self.player_name}!")
             return True
             
         except ConnectionRefusedError:
@@ -171,9 +182,9 @@ class UnifiedClient:
             self.show_error(f"Failed to send message: {str(e)}")
 
     def setup_text_tags(self):
-        self.chat_display.tag_configure('right', justify='right')
-        self.chat_display.tag_configure('left', justify='left')
-        self.chat_display.tag_configure('center', justify='center')
+        self.chat_display.tag_configure('system', foreground='red', justify='center')
+        self.chat_display.tag_configure('chat', foreground='black')
+        self.chat_display.tag_configure('self', foreground='blue')
         self.chatbot_display.tag_configure('bot', foreground='blue')
         self.chatbot_display.tag_configure('user', foreground='green')
 
@@ -246,63 +257,45 @@ class UnifiedClient:
     def receive_messages(self):
         while True:
             try:
-                data = self.client_socket.recv(4096).decode()  # Increased buffer size
-                messages = data.split('\n')
+                message = self.client_socket.recv(1024).decode()
+                if not message:
+                    break
+                    
+                self.chat_display.configure(state='normal')
                 
-                for data in messages:
-                    if not data:
-                        continue
-                        
-                    try:
-                        message = json.loads(data)
-                        
-                        if message['type'] == 'chat':
-                            sender = message.get('sender', '')
-                            content = message.get('content', '')
-                            if sender == self.player_name:
-                                self.add_chat_message("You", content, True)
-                            else:
-                                self.add_chat_message(sender, content, False)
-                        
-                        elif message['type'] == 'join':
-                            name = message.get('name', '')
-                            self.add_system_message(f"{name} has joined!")
-                        
-                        elif message['type'] == 'game_update':
-                            self.write_to_game(f"{message.get('content', '')}\n")
-                        
-                        elif message['type'] == 'game_start':
-                            players = message.get('players', [])
-                            self.start_game_session(players)
-                        
-                        elif message['type'] == 'system':
-                            self.add_system_message(message.get('content', ''))
-                        
-                        elif message['type'] == 'error':
-                            self.show_error(message.get('content', ''))
-                            
-                    except json.JSONDecodeError:
-                        print(f"Invalid JSON received: {data}")
-                        
+                if message.startswith('System:'):
+                    # System messages in red
+                    self.chat_display.insert(tk.END, f"{message}\n", 'system')
+                elif ':' in message:
+                    # Other client messages in blue
+                    self.chat_display.insert(tk.END, f"{message}\n", 'other')
+                if "has joined!" in message:
+                    # Handle join message
+                    player = message.split()[1]
+                    self.connected_players.add(player)
+                
+                self.chat_display.configure(state='disabled')
+                self.chat_display.see(tk.END)
+                
             except ConnectionResetError:
-                self.add_system_message("Connection to server lost!")
+                self.chat_display.configure(state='normal')
+                self.chat_display.insert(tk.END, "*** Connection to server lost ***\n", 'system')
+                self.chat_display.configure(state='disabled')
                 break
             except Exception as e:
                 print(f"Error receiving message: {e}")
                 break
 
-    def add_chat_message(self, sender: str, content: str, is_self: bool):
+    def add_chat_message(self, sender: str, content: str, is_self: bool = False):
         self.chat_display.configure(state='normal')
-        if is_self:
-            self.chat_display.insert(tk.END, f"You: {content}\n", 'right')
-        else:
-            self.chat_display.insert(tk.END, f"{sender}: {content}\n", 'left')
+        tag = 'self' if is_self else 'chat'
+        self.chat_display.insert(tk.END, f"{sender}: {content}\n", tag)
         self.chat_display.configure(state='disabled')
         self.chat_display.see(tk.END)
 
     def add_system_message(self, message: str):
         self.chat_display.configure(state='normal')
-        self.chat_display.insert(tk.END, f"*** {message} ***\n", 'center')
+        self.chat_display.insert(tk.END, f"*** {message} ***\n", 'system')
         self.chat_display.configure(state='disabled')
         self.chat_display.see(tk.END)
 
@@ -312,13 +305,20 @@ class UnifiedClient:
     def handle_chat_input(self, event):
         message = self.chat_input.get().strip()
         if message:
-            # Only handle player chat messages here
-            self.send_message({
-                'type': 'chat',
-                'content': message,
-                'sender': self.player_name
-            })
-            self.chat_input.delete(0, tk.END)
+            try:
+                # Format message with sender name
+                formatted_message = f"{self.player_name}: {message}"
+                self.client_socket.send(formatted_message.encode())
+                
+                # Display own message in green
+                self.chat_display.configure(state='normal')
+                self.chat_display.insert(tk.END, f"You: {message}\n", 'self')
+                self.chat_display.configure(state='disabled')
+                self.chat_display.see(tk.END)
+                
+                self.chat_input.delete(0, tk.END)
+            except:
+                self.show_error("Failed to send message")
 
     def handle_chatbot_input(self, event):
         message = self.chatbot_input.get().strip()
