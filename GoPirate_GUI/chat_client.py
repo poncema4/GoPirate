@@ -101,9 +101,10 @@ class UnifiedClient:
         send_button = ttk.Button(input_frame, text="Send", command=lambda: self.handle_chatbot_input(None))
         send_button.pack(side=tk.RIGHT, padx=(5, 0))
         
-        # Add welcome message
+        # Add welcome message to match terminal version
         self.chatbot_display.configure(state='normal')
-        self.chatbot_display.insert(tk.END, "Welcome to PirateEase Customer Service!\nHow can I help you today?\n\n", 'bot')
+        welcome_msg = "Welcome to the PirateEase Chatbot!\nType 'bye' to exit or 'help' for assistance.\n\n"
+        self.chatbot_display.insert(tk.END, welcome_msg, 'bot')
         self.chatbot_display.configure(state='disabled')
 
     def setup_multiplayer_chat(self):
@@ -342,23 +343,38 @@ class UnifiedClient:
             # Clear input first
             self.chatbot_input.delete(0, tk.END)
             
+            if message.lower() == 'bye':
+                # Handle bye message
+                self.chatbot_display.configure(state='normal')
+                self.chatbot_display.insert(tk.END, f"You: {message}\n", 'user')
+                self.chatbot_display.insert(tk.END, "Bot: Goodbye!\n\n", 'bot')
+                self.chatbot_display.configure(state='disabled')
+                return
+                
+            elif message.lower() == 'help':
+                # Handle help message
+                self.chatbot_display.configure(state='normal')
+                self.chatbot_display.insert(tk.END, f"You: {message}\n", 'user')
+                help_msg = "Bot: You can ask me about your order status, refund requests, product availability, or connect you to a live agent.\n\n"
+                self.chatbot_display.insert(tk.END, help_msg, 'bot')
+                self.chatbot_display.configure(state='disabled')
+                return
+            
             # Display user message
             self.chatbot_display.configure(state='normal')
             self.chatbot_display.insert(tk.END, f"You: {message}\n", 'user')
             
             try:
-                # Get chatbot response
+                # Get chatbot response 
                 response = self.chatbot.process_query(message)
                 
                 # Display bot response
-                self.chatbot_display.insert(tk.END, f"Bot: {response}\n", 'bot')
+                self.chatbot_display.insert(tk.END, f"Bot: {response}\n\n", 'bot')
                 
             except Exception as e:
                 print(f"Chatbot error: {str(e)}")
-                self.chatbot_display.insert(tk.END, "Bot: I apologize, but I'm having trouble processing your request. Please try again.\n", 'bot')
+                self.chatbot_display.insert(tk.END, "Bot: I apologize, but I'm having trouble processing your request. Please try again.\n\n", 'bot')
             
-            # Add extra line for readability
-            self.chatbot_display.insert(tk.END, "\n")
             self.chatbot_display.configure(state='disabled')
             self.chatbot_display.see(tk.END)
 
