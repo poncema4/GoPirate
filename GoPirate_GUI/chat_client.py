@@ -120,10 +120,6 @@ class UnifiedClient:
             # Send player name to server for registration
             self.client_socket.send(f"JOIN:{self.player_name}".encode())
             
-            # Announce player join
-            join_message = f"*** {self.username} has joined! ***"
-            self.client_socket.send(join_message.encode())
-            
             # Start receiver thread
             self.receiver_thread = threading.Thread(target=self.receive_messages, daemon=True)
             self.receiver_thread.start()
@@ -312,7 +308,7 @@ class UnifiedClient:
                 
                 # Display own message in green
                 self.chat_display.configure(state='normal')
-                self.chat_display.insert(tk.END, f"You: {message}\n", 'self')
+                self.chat_display.insert(tk.END, f"You: {message}\n", 'self', foreground='green')
                 self.chat_display.configure(state='disabled')
                 self.chat_display.see(tk.END)
                 
