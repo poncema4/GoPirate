@@ -19,6 +19,7 @@ class BattleManager:
         self.__available_players: list[Character] = available_players
         self.__players: list[Character] = []
         self.__turn: int = 0
+        self.__previously_alive = set()  # Add this line to fix the error
 
 
     def __str__(self) -> str:
