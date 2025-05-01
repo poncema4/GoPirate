@@ -81,13 +81,29 @@ class UnifiedClient:
         chatbot_frame = ttk.LabelFrame(self.left_panel, text="Customer Service Bot")
         chatbot_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         
+        # Initialize chatbot
         self.chatbot = Chatbot()
-        self.chatbot_display = scrolledtext.ScrolledText(chatbot_frame, state='disabled')  # Make read-only
+        
+        # Chat display area with scrollbar
+        self.chatbot_display = scrolledtext.ScrolledText(chatbot_frame, height=10, state='disabled')
         self.chatbot_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        self.chatbot_input = ttk.Entry(chatbot_frame)
-        self.chatbot_input.pack(fill=tk.X, padx=5, pady=5)
+        # Input frame for better organization
+        input_frame = ttk.Frame(chatbot_frame)
+        input_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Input entry with Send button
+        self.chatbot_input = ttk.Entry(input_frame)
+        self.chatbot_input.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.chatbot_input.bind('<Return>', self.handle_chatbot_input)
+        
+        send_button = ttk.Button(input_frame, text="Send", command=lambda: self.handle_chatbot_input(None))
+        send_button.pack(side=tk.RIGHT, padx=(5, 0))
+        
+        # Add welcome message
+        self.chatbot_display.configure(state='normal')
+        self.chatbot_display.insert(tk.END, "Welcome to PirateEase Customer Service!\nHow can I help you today?\n\n", 'bot')
+        self.chatbot_display.configure(state='disabled')
 
     def setup_multiplayer_chat(self):
         chat_frame = ttk.LabelFrame(self.right_panel, text="Player Chat")
@@ -263,12 +279,11 @@ class UnifiedClient:
                     # System messages in red
                     self.chat_display.insert(tk.END, f"{message}\n", 'system')
                 elif ':' in message:
-                    # Other client messages in blue
-                    self.chat_display.insert(tk.END, f"{message}\n", 'other')
-                if "has joined!" in message:
-                    # Handle join message
-                    player = message.split()[1]
-                    self.connected_players.add(player)
+                    sender, content = message.split(':', 1)
+                    if sender.strip() == self.player_name:
+                        continue  # Skip messages from self since we already displayed them
+                    # Other client messages
+                    self.chat_display.insert(tk.END, message + "\n", 'other')
                 
                 self.chat_display.configure(state='disabled')
                 self.chat_display.see(tk.END)
@@ -302,39 +317,48 @@ class UnifiedClient:
         message = self.chat_input.get().strip()
         if message:
             try:
-
+                # Format message with player name
                 formatted_message = f"{self.player_name}: {message}"
+                
+                # Send message to server
                 self.client_socket.send(formatted_message.encode())
                 
                 # Display own message in green
                 self.chat_display.configure(state='normal')
-                self.chat_display.insert(tk.END, f"You: {message}\n", 'self', foreground='green')
+                self.chat_display.insert(tk.END, f"You: {message}\n", 'self')
                 self.chat_display.configure(state='disabled')
                 self.chat_display.see(tk.END)
                 
+                # Clear input
                 self.chat_input.delete(0, tk.END)
-            except:
-                self.show_error("Failed to send message")
-
+            except Exception as e:
+                self.show_error(f"Failed to send message: {str(e)}")
+                
     def handle_chatbot_input(self, event):
         message = self.chatbot_input.get().strip()
         if message:
+            # Clear input first
+            self.chatbot_input.delete(0, tk.END)
+            
             # Display user message
             self.chatbot_display.configure(state='normal')
             self.chatbot_display.insert(tk.END, f"You: {message}\n", 'user')
+            
+            try:
+                # Get chatbot response
+                response = self.chatbot.process_query(message)
+                
+                # Display bot response
+                self.chatbot_display.insert(tk.END, f"Bot: {response}\n", 'bot')
+                
+            except Exception as e:
+                print(f"Chatbot error: {str(e)}")
+                self.chatbot_display.insert(tk.END, "Bot: I apologize, but I'm having trouble processing your request. Please try again.\n", 'bot')
+            
+            # Add extra line for readability
+            self.chatbot_display.insert(tk.END, "\n")
             self.chatbot_display.configure(state='disabled')
             self.chatbot_display.see(tk.END)
-            
-            # Get chatbot response
-            response = self.chatbot.process_query(message)
-            
-            # Display bot response
-            self.chatbot_display.configure(state='normal')
-            self.chatbot_display.insert(tk.END, f"Bot: {response}\n", 'bot')
-            self.chatbot_display.configure(state='disabled')
-            self.chatbot_display.see(tk.END)
-            
-            self.chatbot_input.delete(0, tk.END)
 
     def start_game(self):
         self.send_message({'type': 'game_start'})

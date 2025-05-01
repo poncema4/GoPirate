@@ -38,11 +38,12 @@ class ChatServer:
     def broadcast(self, message, sender=None):
         with self.lock:
             for client in self.clients:
-                if client != sender:
-                    try:
-                        client.send(message.encode())
-                    except:
-                        pass
+                try:
+                    client.send(message.encode())
+                except Exception as e:
+                    print(f"Error broadcasting to client: {str(e)}")
+                    # Don't break on individual client errors
+                    continue
                         
     def handle_client(self, client_socket, addr):
         while True:
@@ -54,24 +55,27 @@ class ChatServer:
                 if message.startswith('JOIN:'):
                     # Handle new client joining
                     client_name = message[5:]
-                    self.clients[client_socket] = client_name
+                    with self.lock:
+                        self.clients[client_socket] = client_name
                     welcome_msg = f"System: {client_name} has joined the chat"
-                    self.broadcast(welcome_msg, client_socket)
+                    self.broadcast(welcome_msg)
                     self.log_message(f"New client joined: {client_name}")
                 else:
-                    # Broadcast regular messages
+                    # Broadcast regular messages to all clients except sender
                     self.broadcast(message, client_socket)
                     self.log_message(message)
                     
-            except:
+            except Exception as e:
+                print(f"Error handling client: {str(e)}")
                 break
                 
         # Clean up disconnected client
-        if client_socket in self.clients:
-            client_name = self.clients[client_socket]
-            del self.clients[client_socket]
-            self.broadcast(f"System: {client_name} has left the chat")
-            self.log_message(f"Client disconnected: {client_name}")
+        with self.lock:
+            if client_socket in self.clients:
+                client_name = self.clients[client_socket]
+                del self.clients[client_socket]
+                self.broadcast(f"System: {client_name} has left the chat")
+                self.log_message(f"Client disconnected: {client_name}")
             
         client_socket.close()
         
