@@ -54,7 +54,8 @@ class UnifiedClient:
         game_frame = ttk.LabelFrame(self.left_panel, text="JJK Game")
         game_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         
-        self.game_display = scrolledtext.ScrolledText(game_frame, state='disabled')  # Make read-only
+        # Make game display read-only
+        self.game_display = scrolledtext.ScrolledText(game_frame, state='disabled')
         self.game_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         controls_frame = ttk.Frame(game_frame)
@@ -84,7 +85,7 @@ class UnifiedClient:
         # Initialize chatbot
         self.chatbot = Chatbot()
         
-        # Chat display area with scrollbar
+        # Make chatbot display read-only
         self.chatbot_display = scrolledtext.ScrolledText(chatbot_frame, height=10, state='disabled')
         self.chatbot_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
@@ -109,10 +110,11 @@ class UnifiedClient:
         chat_frame = ttk.LabelFrame(self.right_panel, text="Player Chat")
         chat_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        self.chat_display = scrolledtext.ScrolledText(chat_frame)
+        # Make chat display read-only
+        self.chat_display = scrolledtext.ScrolledText(chat_frame, state='disabled')
         self.chat_display.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Configure tags for different message types
+        # Configure tags for different message types - make self messages green
         self.chat_display.tag_configure('self', foreground='green')
         self.chat_display.tag_configure('other', foreground='blue')
         self.chat_display.tag_configure('system', foreground='red')
@@ -195,8 +197,8 @@ class UnifiedClient:
 
     def setup_text_tags(self):
         self.chat_display.tag_configure('system', foreground='red', justify='center')
-        self.chat_display.tag_configure('chat', foreground='black')
-        self.chat_display.tag_configure('self', foreground='blue')
+        self.chat_display.tag_configure('chat', foreground='blue')
+        self.chat_display.tag_configure('self', foreground='green')  # Changed to green
         self.chatbot_display.tag_configure('bot', foreground='blue')
         self.chatbot_display.tag_configure('user', foreground='green')
 
