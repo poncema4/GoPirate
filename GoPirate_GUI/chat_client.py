@@ -302,7 +302,7 @@ class UnifiedClient:
         message = self.chat_input.get().strip()
         if message:
             try:
-                # Format message with sender name
+
                 formatted_message = f"{self.player_name}: {message}"
                 self.client_socket.send(formatted_message.encode())
                 
