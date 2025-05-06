@@ -3,8 +3,10 @@ import os
 sys.path.append(os.path.dirname(__file__))
 
 import time
+
 from character import Character
 from user_interface import get_valid_input, clear_output, slow_print
+
 
 class BattleManager:
     """
@@ -19,7 +21,6 @@ class BattleManager:
         self.__available_players: list[Character] = available_players
         self.__players: list[Character] = []
         self.__turn: int = 0
-        self.__previously_alive = set()  # Add this line to fix the error
 
 
     def __str__(self) -> str:
@@ -47,14 +48,23 @@ class BattleManager:
     # region Methods
     def select_players(self) -> None:
         """
-        Allows each player to choose their character.
+        Allows the player to choose their character before the game begins
         :return: None
         """
-        print("Choose your character:")
-        for i, character in enumerate(self.__available_players, start=1):
-            print(f"{i}: " + character.get_description())
-            
-        for i in range(len(self.__previously_alive)):
+        while True:
+            try:
+                num_players = int(input(f"Enter the number of players (Max is {len(self.__available_players)}): "))
+                if num_players < 1 or num_players > 5:
+                    print("Invalid number of players. Please choose again!")
+                    continue
+                break
+            except ValueError:
+                print("Invalid Input. Please enter a number!")
+
+        for i in range(num_players):
+            print("Choose your character:")
+            for j, character in enumerate(self.__available_players, start=1):
+                print(f"{j}: " + character.get_description())
             choice: int = get_valid_input(f"Player {i + 1} pick your character: ",
                                           "Invalid option, please choose again.",
                                           [character.name for character in self.__available_players])
