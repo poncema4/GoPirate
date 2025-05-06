@@ -53,7 +53,12 @@ class NetworkManager:
     def broadcast(self, message: str):
         for client in self.clients:
             try:
-                client.send(message.encode())
+                if isinstance(message, dict):
+                    # Handle JSON messages
+                    client.send((json.dumps(message) + '\n').encode())
+                else:
+                    # Handle plain text messages
+                    client.send(message.encode())
             except:
                 continue
 

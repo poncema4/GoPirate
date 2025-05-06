@@ -36,6 +36,9 @@ class UnifiedClient:
         
         # Start message receiver
         self.receiver_thread = None
+        self.combat_action = None
+        self.current_turn = 0
+        self.in_character_selection = False
         
     def setup_layout(self):
         self.root.grid_rowconfigure(0, weight=1)
@@ -261,19 +264,48 @@ class UnifiedClient:
     def handle_game_input(self, event):
         if not self.game_started:
             return
-        
+            
         command = self.game_input.get().strip()
         if not command:
             return
             
         self.game_input.delete(0, tk.END)
         
-        # Send player action to all clients
-        self.send_message({
-            'type': 'game_action',
-            'player': self.player_name,
-            'action': command
-        })
+        # Character selection phase
+        if self.in_character_selection:
+            try:
+                choice = int(command)
+                if 1 <= choice <= len(self.available_characters):
+                    self.send_message({
+                        'type': 'game_action',
+                        'action': 'select_character',
+                        'choice': choice,
+                        'player': self.player_name
+                    })
+            except ValueError:
+                pass
+            return
+
+        # Combat phase
+        if self.combat_action:
+            try:
+                target = int(command)
+                self.send_message({
+                    'type': 'game_action',
+                    'action': self.combat_action,
+                    'target': target,
+                    'player': self.player_name
+                })
+                self.combat_action = None
+            except ValueError:
+                pass
+            return
+
+        # Handle basic commands
+        if command.lower() in ['attack', 'defend', 'special']:
+            if self.is_players_turn():
+                self.combat_action = command.lower()
+                self.write_to_game(f"\nSelect target (1-{len(self.game_manager._BattleManager__players)}): ")
 
     def receive_messages(self):
         while True:
@@ -281,48 +313,23 @@ class UnifiedClient:
                 message = self.client_socket.recv(1024).decode()
                 if not message:
                     break
-                    
-                # Try to parse as JSON first
+
+                # Handle JSON messages (game state)
                 try:
                     data = json.loads(message)
-                    
-                    if data['type'] == 'game_start':
-                        self.game_started = True
-                        if 'players' in data:
-                            self.connected_players = set(data['players'])
-                        self.start_game_session(list(self.connected_players))
-                    
-                    elif data['type'] == 'game_action':
-                        if self.game_started:
-                            player = data['player']
-                            action = data['action']
-                            self.handle_game_action(player, action)
-                            
+                    if data['type'] == 'game_state':
+                        self.handle_game_state(data)
+                    elif data['type'] == 'chat':
+                        self.handle_chat_message(data['sender'], data['content'])
                 except json.JSONDecodeError:
-                    # Handle regular chat messages
-                    self.chat_display.configure(state='normal')
+                    # Handle plain text messages (system notifications)
                     if message.startswith('System:'):
-                        # Extract player name from system messages
-                        if "has joined" in message:
-                            player = message.split(":")[1].split("has joined")[0].strip()
-                            self.connected_players.add(player)
-                        elif "has left" in message:
-                            player = message.split(":")[1].split("has left")[0].strip()
-                            self.connected_players.discard(player)
-                        self.chat_display.insert(tk.END, f"{message}\n", 'system')
-                    elif ':' in message:
-                        sender, content = message.split(':', 1)
-                        sender = sender.strip()
-                        if sender != self.player_name:
-                            self.chat_display.insert(tk.END, message + "\n", 'other')
-                    self.chat_display.configure(state='disabled')
-                    self.chat_display.see(tk.END)
-                
+                        self.handle_system_message(message)
+                    else:
+                        self.handle_chat_message(message.split(':')[0], ':'.join(message.split(':')[1:]))
+
             except ConnectionResetError:
                 self.handle_disconnect()
-                break
-            except Exception as e:
-                print(f"Error receiving message: {e}")
                 break
 
     def handle_disconnect(self):
@@ -339,68 +346,169 @@ class UnifiedClient:
         self.game_input.configure(state='disabled')
 
     def handle_game_action(self, player: str, action: str):
-        """Handle game actions from any player"""
         try:
             action_num = int(action)
             if not self.game_manager:
                 return
                 
-            # Handle character selection or target selection
+            # Character selection phase
             if len(self.game_manager._BattleManager__players) < len(self.connected_players):
-                # Character selection phase
                 if 1 <= action_num <= len(self.game_manager._BattleManager__available_players):
                     chosen = self.game_manager._BattleManager__available_players[action_num - 1]
                     self.game_manager._BattleManager__players.append(chosen)
-                    self.write_to_game(f"\n{player} selected {chosen.name}")
+                    self.write_to_game(f"\n{player} selected {chosen.name}\n")
                     
+                    # Start battle once all players have chosen
                     if len(self.game_manager._BattleManager__players) == len(self.connected_players):
+                        self.broadcast_game_state("battle_start")
                         self.start_battle()
-            else:
-                # Handle combat actions
-                current_player = self.game_manager._BattleManager__players[self.game_manager._BattleManager__turn]
-                if player == self.player_name and current_player:
-                    self.process_combat_action(current_player, action)
-        except ValueError:
-            pass
 
-    # Add these new helper methods
-    def process_combat_action(self, player: Character, action: str):
-        """Process combat actions for the current player"""
-        if not self.game_started or not player:
+            # Combat phase
+            else:
+                current_player = self.game_manager._BattleManager__players[self.game_manager._BattleManager__turn % len(self.game_manager._BattleManager__players)]
+                if current_player and player == self.player_name:
+                    target_idx = action_num - 1
+                    if 0 <= target_idx < len(self.game_manager._BattleManager__players):
+                        target = self.game_manager._BattleManager__players[target_idx]
+                        self.process_combat_action(current_player, target)
+                        self.broadcast_game_state("turn_end")
+                        
+        except ValueError:
+            # Handle non-numeric game inputs
+            if action.lower() in ["attack", "defend", "special"]:
+                if player == self.get_current_player():
+                    self.queue_combat_action(action.lower())
+
+    def broadcast_game_state(self, state_type: str):
+        game_state = {
+            'type': 'game_state',
+            'state': state_type,
+            'players': [p.name for p in self.game_manager._BattleManager__players],
+            'current_turn': self.game_manager._BattleManager__turn,
+            'hp_values': [p.hp for p in self.game_manager._BattleManager__players]
+        }
+        self.send_message(game_state)
+
+    def get_current_player(self) -> str:
+        if not self.game_manager or not self.game_manager._BattleManager__players:
+            return ""
+        current_idx = self.game_manager._BattleManager__turn % len(self.game_manager._BattleManager__players)
+        return self.game_manager._BattleManager__players[current_idx].name
+
+    def queue_combat_action(self, action: str):
+        self.combat_action = action
+        self.write_to_game(f"\nSelect target (1-{len(self.game_manager._BattleManager__players)}): ")
+
+    def process_combat_action(self, attacker: Character, target: Character):
+        if self.combat_action == "attack":
+            attacker.attack(target)
+        elif self.combat_action == "defend":
+            attacker.defend()
+        elif self.combat_action == "special":
+            attacker.special([target], self.game_manager._BattleManager__turn)
+        self.combat_action = None
+        self.next_turn()
+
+    def handle_chat_message(self, sender: str, content: str):
+        self.chat_display.configure(state='normal')
+        if sender == self.player_name:
+            self.chat_display.insert(tk.END, f"You: {content}\n", 'self')
+        else:
+            self.chat_display.insert(tk.END, f"{sender}: {content}\n", 'other')
+        self.chat_display.configure(state='disabled')
+        self.chat_display.see(tk.END)
+
+    def handle_system_message(self, message: str):
+        self.chat_display.configure(state='normal')
+        self.chat_display.insert(tk.END, f"{message}\n", 'system')
+        self.chat_display.configure(state='disabled')
+        self.chat_display.see(tk.END)
+
+    def handle_game_state(self, state_data: dict):
+        if state_data['type'] == 'game_start':
+            if not self.game_started:
+                self.start_game()
+        
+        elif state_data['type'] == 'character_selected':
+            player = state_data['player']
+            char_name = state_data['character']
+            self.write_to_game(f"\n{player} selected {char_name}")
+            
+            if state_data.get('battle_start'):
+                self.in_character_selection = False
+                self.start_battle()
+                
+        elif state_data['type'] == 'combat_action':
+            self.handle_combat_action(state_data)
+            
+    def handle_combat_action(self, action_data: dict):
+        if not self.game_manager:
             return
             
-        if action.lower() == "attack":
-            target = self.get_valid_target(player)
-            if target:
-                player.attack(target)
-                self.next_turn()
-        elif action.lower() == "defend":
-            player.defend()
-            self.next_turn()
-        elif action.lower() == "special":
-            target = self.get_valid_target(player)
-            if target:
-                if player.special([target], self.game_manager._BattleManager__turn):
-                    self.next_turn()
+        attacker = self.get_player_by_name(action_data['player'])
+        if not attacker:
+            return
+            
+        action = action_data['action']
+        if action == 'defend':
+            attacker.defend()
+            self.write_to_game(f"\n{attacker.name} defends!")
+        else:
+            target = self.get_player_by_name(action_data['target'])
+            if not target:
+                return
+                
+            if action == 'attack':
+                attacker.attack(target)
+            elif action == 'special':
+                attacker.special([target], self.current_turn)
+                
+        self.current_turn += 1
+        self.update_game_display()
 
-    def next_turn(self):
-        """Advance to next turn"""
-        self.game_manager._BattleManager__turn = (self.game_manager._BattleManager__turn + 1) % len(self.game_manager._BattleManager__players)
-        while not self.game_manager._BattleManager__players[self.game_manager._BattleManager__turn].is_alive():
-            self.game_manager._BattleManager__turn = (self.game_manager._BattleManager__turn + 1) % len(self.game_manager._BattleManager__players)
-        
-        self.write_to_game(f"\n{self.game_manager._BattleManager__players[self.game_manager._BattleManager__turn].name}'s turn!")
+    def handle_chat_input(self, event):
+        message = self.chat_input.get().strip()
+        if message:
+            try:
+                # Send message to server
+                self.client_socket.send(f"{self.player_name}: {message}".encode())
+                
+                # Clear input
+                self.chat_input.delete(0, tk.END)
+            except Exception as e:
+                self.show_error(f"Failed to send message: {str(e)}")
 
-    def get_valid_target(self, attacker: Character) -> Optional[Character]:
-        """Get valid target for attacks/special moves"""
-        try:
-            target_num = int(self.game_input.get())
-            valid_targets = [p for p in self.game_manager._BattleManager__players if p.is_alive() and p != attacker]
-            if 1 <= target_num <= len(valid_targets):
-                return valid_targets[target_num - 1]
-        except ValueError:
-            pass
+    def is_players_turn(self) -> bool:
+        if not self.game_manager or not self.game_manager._BattleManager__players:
+            return False
+        current_player = self.game_manager._BattleManager__players[self.current_turn % len(self.game_manager._BattleManager__players)]
+        return current_player.name == self.player_name
+
+    def get_player_by_name(self, name: str) -> Optional[Character]:
+        if not self.game_manager:
+            return None
+        for player in self.game_manager._BattleManager__players:
+            if player.name == name:
+                return player
         return None
+
+    def update_game_display(self):
+        if not self.game_manager:
+            return
+            
+        self.write_to_game("\nCurrent Status:\n")
+        for player in self.game_manager._BattleManager__players:
+            self.write_to_game(f"{player.name}: {player.hp} HP\n")
+            
+        current_player = self.game_manager._BattleManager__players[self.current_turn % len(self.game_manager._BattleManager__players)]
+        self.write_to_game(f"\n{current_player.name}'s turn!\n")
+
+    def start_battle(self):
+        self.write_to_game("\nBattle begins!\n")
+        self.attack_button.configure(state='normal')
+        self.defend_button.configure(state='normal') 
+        self.special_button.configure(state='normal')
+        self.update_game_display()
 
     def add_chat_message(self, sender: str, content: str, is_self: bool = False):
         self.chat_display.configure(state='normal')
@@ -418,27 +526,6 @@ class UnifiedClient:
     def show_error(self, message: str):
         tk.messagebox.showerror("Error", message)
 
-    def handle_chat_input(self, event):
-        message = self.chat_input.get().strip()
-        if message:
-            try:
-                # Format message with player name
-                formatted_message = f"{self.player_name}: {message}"
-                
-                # Send message to server
-                self.client_socket.send(formatted_message.encode())
-                
-                # Display own message in green
-                self.chat_display.configure(state='normal')
-                self.chat_display.insert(tk.END, f"You: {message}\n", 'self')
-                self.chat_display.configure(state='disabled')
-                self.chat_display.see(tk.END)
-                
-                # Clear input
-                self.chat_input.delete(0, tk.END)
-            except Exception as e:
-                self.show_error(f"Failed to send message: {str(e)}")
-                
     def handle_chatbot_input(self, event):
         message = self.chatbot_input.get().strip()
         if message:
@@ -481,35 +568,33 @@ class UnifiedClient:
             self.chatbot_display.see(tk.END)
 
     def start_game(self):
+        if not self.connected_players:
+            self.show_error("Need at least 2 players to start")
+            return
+            
         # Disable start button
         self.start_button.configure(state='disabled')
+        self.in_character_selection = True
         
-        # Initialize JJK Game components
-        character_names = ['Gojo', 'Sukuna', 'Megumi', 'Nanami', 'Nobara']
-        factory = CharacterFactory()
-        available_characters = [factory.create_character(name) for name in character_names]
-        
-        # Clear and update game display
-        self.game_display.configure(state='normal')
-        self.game_display.delete(1.0, tk.END)
-        
-        # Initialize game state
-        self.game_manager = BattleManager(available_characters)
-        self.game_started = True
-        
-        # Show character selection
-        self.write_to_game("Choose your character:\n\n")
-        for i, char in enumerate(available_characters, 1):
-            self.write_to_game(f"{i}: {char.get_description()}\n")
-        
-        # Enable input for character selection
-        self.game_input.configure(state='normal')
-        
-        # Notify other players game has started
+        # Send game start notification
         self.send_message({
             'type': 'game_start',
-            'characters': character_names
+            'sender': self.player_name
         })
+        
+        # Initialize game
+        character_names = ['Gojo', 'Sukuna', 'Megumi', 'Nanami', 'Nobara']
+        factory = CharacterFactory()
+        self.available_characters = [factory.create_character(name) for name in character_names]
+        self.game_manager = BattleManager(self.available_characters)
+        
+        # Show character selection
+        self.write_to_game("\nChoose your character (1-5):\n")
+        for i, char in enumerate(self.available_characters, 1):
+            self.write_to_game(f"{i}: {char.get_description()}\n")
+        
+        self.game_input.configure(state='normal')
+        self.game_started = True
 
     def run(self):
         if self.connect_to_server():
