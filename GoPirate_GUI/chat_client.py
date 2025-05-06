@@ -44,6 +44,14 @@ class UnifiedClient:
         self.available_chars = []
         self.battle_started = False
         
+        # Add character selection tracking
+        self.character_selection_order = []
+        self.selected_characters = {}
+        self.my_character = None  # Track this client's selected character
+        self.selected_characters = {}  # Map of player names to their chosen characters
+        self.character_selection_order = []  # Track selection order
+        self.available_characters = []  # List of characters still available
+
     def setup_layout(self):
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=2)
@@ -273,25 +281,71 @@ class UnifiedClient:
             return
             
         command = self.game_input.get().strip()
+        self.game_input.delete(0, tk.END)
+        
         if not command:
             return
             
-        self.game_input.delete(0, tk.END)
-        
         try:
             choice = int(command)
-            if self.in_character_selection:
+            if self.in_character_selection and not self.my_character:
+                # Only allow selection if player hasn't chosen yet
                 if 1 <= choice <= len(self.available_chars):
+                    chosen = self.available_chars[choice - 1]
+                    self.my_character = chosen
+                    self.write_to_game(f"\nYou selected {chosen.name}")
+                    
+                    # Send selection to server
                     self.send_message({
                         'type': 'select_char',
                         'player': self.player_name,
-                        'choice': choice - 1
+                        'choice': choice
                     })
-            elif self.battle_started and self.combat_action:
-                self.handle_combat_choice(choice)
+                    # Disable input until battle starts
+                    self.game_input.configure(state='disabled')
+            
+            elif self.battle_started and self.is_players_turn():
+                if self.combat_action:
+                    if self.combat_action == "defend":
+                        # Defense doesn't need a target
+                        self.send_message({
+                            'type': 'combat',
+                            'action': 'defend',
+                            'player': self.player_name
+                        })
+                        self.combat_action = None
+                        self.game_input.configure(state='disabled')
+                    else:
+                        # Attack and Special need valid target
+                        targets = [c for p, c in self.selected_characters.items() 
+                                if p != self.player_name and c.is_alive()]
+                        if 1 <= choice <= len(targets):
+                            target = targets[choice - 1]
+                            self.send_message({
+                                'type': 'combat',
+                                'action': self.combat_action,
+                                'player': self.player_name,
+                                'target': target.name
+                            })
+                            self.combat_action = None
+                            self.game_input.configure(state='disabled')
+                        else:
+                            self.write_to_game("\nInvalid target number!")
+
         except ValueError:
-            if command.lower() in ['attack', 'defend', 'special']:
-                self.handle_combat_command(command.lower())
+            # Handle action commands only during battle and player's turn
+            cmd = command.lower()
+            if cmd in ['attack', 'defend', 'special'] and self.battle_started and self.is_players_turn():
+                if cmd == 'defend':
+                    self.handle_defend()
+                else:
+                    self.combat_action = cmd
+                    targets = [c for p, c in self.selected_characters.items() 
+                             if p != self.player_name and c.is_alive()]
+                    self.write_to_game("\nAvailable targets:")
+                    for i, target in enumerate(targets, 1):
+                        self.write_to_game(f"\n{i}: {target.name} (HP: {target.hp})")
+                    self.write_to_game("\nEnter target number: ")
 
     def receive_messages(self):
         while True:
@@ -560,8 +614,8 @@ class UnifiedClient:
 
     def start_game(self):
         """Start the game if enough players are connected"""
-        if len(self.connected_players) < 2:
-            self.show_error("Need at least 2 players to start")
+        if len(self.connected_players) < 2 or len(self.connected_players) > 5:
+            self.show_error("Need 2-5 players to start")
             return
             
         # Disable start button once game begins
@@ -572,19 +626,20 @@ class UnifiedClient:
         # Initialize game components
         character_names = ['Gojo', 'Sukuna', 'Megumi', 'Nanami', 'Nobara']
         factory = CharacterFactory()
-        self.available_characters = [factory.create_character(name) for name in character_names]
-        self.game_manager = BattleManager(self.available_characters)
+        self.available_chars = [factory.create_character(name) for name in character_names]
+        self.selected_chars = []
+        self.character_selection_order = []
         
         # Start character selection phase
         self.send_message({
             'type': 'game_start',
-            'sender': self.player_name
+            'players': list(self.connected_players)
         })
 
         # Show character selection UI
         self.write_to_game("\nTime to show what real Jujutsu really is...\n")
         self.write_to_game("\nChoose your character:\n")
-        for i, char in enumerate(self.available_characters, 1):
+        for i, char in enumerate(self.available_chars, 1):
             self.write_to_game(f"{i}: {char.get_description()}\n")
 
     def handle_character_selection(self, data: dict):
@@ -643,8 +698,14 @@ class UnifiedClient:
         msg_type = data.get('type')
         if msg_type == 'game_start':
             self.init_game()
-        elif msg_type == 'select_char':
-            self.handle_char_select(data['player'], data['choice'])
+        elif msg_type == 'char_select':
+            # Handle another player's character selection
+            player = data['player']
+            char_idx = data['choice']
+            if player != self.player_name:  # Only process others' selections
+                self.handle_char_select(player, char_idx)
+        elif msg_type == 'battle_start':
+            self.start_battle_phase()
         elif msg_type == 'combat':
             self.handle_combat_update(data)
         elif msg_type == 'game_over':
@@ -673,45 +734,114 @@ class UnifiedClient:
         if not 0 <= choice < len(self.available_chars):
             return
             
+        # Get character without removing yet
         char = self.available_chars[choice]
-        self.selected_chars.append(char)
-        self.write_to_game(f"\n{player} selected {char.name}")
         
-        if len(self.selected_chars) == len(self.connected_players):
-            self.start_battle_phase()
+        # Only remove if not already taken
+        if char not in self.selected_chars:
+            self.available_chars.pop(choice)
+            self.selected_chars.append(char)
+            self.selected_characters[player] = char
+            if player not in self.character_selection_order:
+                self.character_selection_order.append(player)
+            
+            # Different messages for self vs other players
+            if player == self.player_name:
+                self.write_to_game(f"\nYou selected {char.name}")
+            else:
+                self.write_to_game(f"\n{player} has chosen {char.name}")
+            
+            # Start battle when all players have chosen
+            if len(self.selected_characters) == len(self.connected_players):
+                self.battle_started = True
+                self.start_battle_phase()
+                self.enable_combat_controls()
 
     def start_battle_phase(self):
         """Start the battle after character selection"""
-        self.battle_started = True
         self.in_character_selection = False
-        self.game_manager._BattleManager__players = self.selected_chars
+        self.battle_started = True
         self.current_turn = 0
         
+        # Initialize battle manager with selected characters in order
+        self.game_manager = BattleManager([char for char in self.selected_chars])
+        self.game_manager._BattleManager__players = self.selected_chars
+        
+        # Enable controls for first player
+        if self.player_name == self.character_selection_order[0]:
+            self.enable_combat_controls()
+            self.game_input.configure(state='normal')
+        else:
+            self.disable_combat_controls()
+            
+        self.write_to_game("\nBattle begins!\n")
+        self.write_to_game("-" * 60 + "\n")
+        self.update_battle_display()
+
+    def enable_combat_controls(self):
+        """Enable combat buttons for current player's turn"""
+        if self.is_players_turn():
+            self.attack_button.configure(state='normal')
+            self.defend_button.configure(state='normal')
+            self.special_button.configure(state='normal')
+            self.game_input.configure(state='normal')
+
+    def disable_combat_controls(self):
+        """Disable combat buttons when not player's turn"""
+        self.attack_button.configure(state='disabled')
+        self.defend_button.configure(state='disabled')
+        self.special_button.configure(state='disabled') 
+        self.game_input.configure(state='disabled')
+
+    def next_turn(self):
+        """Advance to next player's turn"""
+        self.current_turn += 1
+        
+        # Enable/disable controls based on whose turn it is
         if self.is_players_turn():
             self.enable_combat_controls()
+        else:
+            self.disable_combat_controls()
+            
         self.update_battle_display()
+        
+        # Check for game over
+        alive_players = [p for p in self.game_manager._BattleManager__players if p.is_alive()]
+        if len(alive_players) == 1:
+            self.handle_game_over(alive_players[0].name)
 
     def handle_combat_update(self, data: dict):
         """Handle combat actions and updates"""
         action = data['action']
         player = self.get_player_by_name(data['player'])
         
+        if not player:
+            return
+            
         if action == 'attack':
             target = self.get_player_by_name(data['target'])
-            player.attack(target)
+            if target:
+                player.attack(target)
+                self.write_to_game(f"\n{player.name} attacked {target.name}!")
         elif action == 'defend':
             player.defend()
+            self.write_to_game(f"\n{player.name} is defending!")
         elif action == 'special':
             targets = [self.get_player_by_name(t) for t in data['targets']]
-            player.special(targets, self.current_turn)
+            targets = [t for t in targets if t is not None]
+            if targets:
+                player.special(targets, self.current_turn)
+                self.write_to_game(f"\n{player.name} used their special move!")
             
-        # Handle status effects
-        player.handle_poison()
-        player.handle_stun()
+        # Handle status effects and turn advancement
         player.handle_defense_boost()
+        player.handle_poison()
+        stunned = player.handle_stun()
         
         self.next_turn()
-        self.update_battle_display()
+        if stunned:
+            self.write_to_game(f"\n{player.name} is stunned and skips their turn!")
+            self.next_turn()
 
     def update_battle_display(self):
         """Update the game display with current battle state"""
