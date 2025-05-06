@@ -33,12 +33,16 @@ class UnifiedClient:
         self.setup_chatbot_panel()
         self.setup_multiplayer_chat()
         self.setup_text_tags()
+        self.start_button.configure(state='disabled')  # Initially disable start button
         
         # Start message receiver
         self.receiver_thread = None
         self.combat_action = None
         self.current_turn = 0
         self.in_character_selection = False
+        self.selected_chars = []
+        self.available_chars = []
+        self.battle_started = False
         
     def setup_layout(self):
         self.root.grid_rowconfigure(0, weight=1)
@@ -147,6 +151,9 @@ class UnifiedClient:
             # Start receiver thread
             self.receiver_thread = threading.Thread(target=self.receive_messages, daemon=True)
             self.receiver_thread.start()
+            
+            # Enable start button if enough players
+            self.update_start_button()
             return True
             
         except ConnectionRefusedError:
@@ -271,41 +278,20 @@ class UnifiedClient:
             
         self.game_input.delete(0, tk.END)
         
-        # Character selection phase
-        if self.in_character_selection:
-            try:
-                choice = int(command)
-                if 1 <= choice <= len(self.available_characters):
+        try:
+            choice = int(command)
+            if self.in_character_selection:
+                if 1 <= choice <= len(self.available_chars):
                     self.send_message({
-                        'type': 'game_action',
-                        'action': 'select_character',
-                        'choice': choice,
-                        'player': self.player_name
+                        'type': 'select_char',
+                        'player': self.player_name,
+                        'choice': choice - 1
                     })
-            except ValueError:
-                pass
-            return
-
-        # Combat phase
-        if self.combat_action:
-            try:
-                target = int(command)
-                self.send_message({
-                    'type': 'game_action',
-                    'action': self.combat_action,
-                    'target': target,
-                    'player': self.player_name
-                })
-                self.combat_action = None
-            except ValueError:
-                pass
-            return
-
-        # Handle basic commands
-        if command.lower() in ['attack', 'defend', 'special']:
-            if self.is_players_turn():
-                self.combat_action = command.lower()
-                self.write_to_game(f"\nSelect target (1-{len(self.game_manager._BattleManager__players)}): ")
+            elif self.battle_started and self.combat_action:
+                self.handle_combat_choice(choice)
+        except ValueError:
+            if command.lower() in ['attack', 'defend', 'special']:
+                self.handle_combat_command(command.lower())
 
     def receive_messages(self):
         while True:
@@ -314,19 +300,23 @@ class UnifiedClient:
                 if not message:
                     break
 
-                # Handle JSON messages (game state)
-                try:
-                    data = json.loads(message)
-                    if data['type'] == 'game_state':
-                        self.handle_game_state(data)
-                    elif data['type'] == 'chat':
-                        self.handle_chat_message(data['sender'], data['content'])
-                except json.JSONDecodeError:
-                    # Handle plain text messages (system notifications)
-                    if message.startswith('System:'):
-                        self.handle_system_message(message)
-                    else:
-                        self.handle_chat_message(message.split(':')[0], ':'.join(message.split(':')[1:]))
+                if message.startswith('System:'):
+                    if 'has joined' in message:
+                        player = message.split(':')[1].split('has joined')[0].strip()
+                        self.connected_players.add(player)
+                        self.update_start_button()
+                    elif 'has left' in message:
+                        player = message.split(':')[1].split('has left')[0].strip()
+                        self.connected_players.discard(player)
+                        self.update_start_button()
+                    self.handle_system_message(message)
+                else:
+                    try:
+                        data = json.loads(message)
+                        self.handle_game_message(data)
+                    except json.JSONDecodeError:
+                        sender, content = message.split(':', 1)
+                        self.handle_chat_message(sender.strip(), content.strip())
 
             except ConnectionResetError:
                 self.handle_disconnect()
@@ -339,6 +329,7 @@ class UnifiedClient:
         self.chat_display.configure(state='disabled')
         self.game_started = False
         self.connected_players.clear()
+        self.update_start_button()  # Re-check start button state
         # Disable game controls
         self.attack_button.configure(state='disabled')
         self.defend_button.configure(state='disabled')
@@ -568,33 +559,77 @@ class UnifiedClient:
             self.chatbot_display.see(tk.END)
 
     def start_game(self):
-        if not self.connected_players:
+        """Start the game if enough players are connected"""
+        if len(self.connected_players) < 2:
             self.show_error("Need at least 2 players to start")
             return
             
-        # Disable start button
+        # Disable start button once game begins
         self.start_button.configure(state='disabled')
+        self.game_started = True
         self.in_character_selection = True
         
-        # Send game start notification
-        self.send_message({
-            'type': 'game_start',
-            'sender': self.player_name
-        })
-        
-        # Initialize game
+        # Initialize game components
         character_names = ['Gojo', 'Sukuna', 'Megumi', 'Nanami', 'Nobara']
         factory = CharacterFactory()
         self.available_characters = [factory.create_character(name) for name in character_names]
         self.game_manager = BattleManager(self.available_characters)
         
-        # Show character selection
-        self.write_to_game("\nChoose your character (1-5):\n")
+        # Start character selection phase
+        self.send_message({
+            'type': 'game_start',
+            'sender': self.player_name
+        })
+
+        # Show character selection UI
+        self.write_to_game("\nTime to show what real Jujutsu really is...\n")
+        self.write_to_game("\nChoose your character:\n")
         for i, char in enumerate(self.available_characters, 1):
             self.write_to_game(f"{i}: {char.get_description()}\n")
+
+    def handle_character_selection(self, data: dict):
+        player = data['player']
+        char_idx = data['choice'] - 1
         
+        if char_idx < 0 or char_idx >= len(self.available_characters):
+            return
+            
+        chosen = self.available_characters[char_idx]
+        self.selected_characters[player] = chosen
+        self.character_selection_order.append(player)
+        self.write_to_game(f"\n{player} selected {chosen.name}")
+        
+        # Start battle when all players have chosen
+        if len(self.selected_characters) == len(self.connected_players):
+            self.start_battle_phase()
+
+    def start_battle_phase(self):
+        self.in_character_selection = False
+        self.current_turn = 0
+        
+        # Set up players in selection order
+        self.game_manager._BattleManager__players = [
+            self.selected_characters[player] for player in self.character_selection_order
+        ]
+        
+        # Enable combat controls if it's player's turn
+        if self.is_players_turn():
+            self.enable_combat_controls()
+            
+        self.update_game_display()
+
+    def enable_combat_controls(self):
+        self.attack_button.configure(state='normal')
+        self.defend_button.configure(state='normal')
+        self.special_button.configure(state='normal')
         self.game_input.configure(state='normal')
-        self.game_started = True
+
+    def update_start_button(self):
+        """Enable start button only if enough players are connected and game hasn't started"""
+        if len(self.connected_players) >= 2 and not self.game_started:
+            self.start_button.configure(state='normal')
+        else:
+            self.start_button.configure(state='disabled')
 
     def run(self):
         if self.connect_to_server():
@@ -603,6 +638,107 @@ class UnifiedClient:
             tk.messagebox.showerror("Error", "Could not connect to server")
             self.root.destroy()
 
+    def handle_game_message(self, data: dict):
+        """Handle incoming game messages"""
+        msg_type = data.get('type')
+        if msg_type == 'game_start':
+            self.init_game()
+        elif msg_type == 'select_char':
+            self.handle_char_select(data['player'], data['choice'])
+        elif msg_type == 'combat':
+            self.handle_combat_update(data)
+        elif msg_type == 'game_over':
+            self.handle_game_over(data['winner'])
+
+    def init_game(self):
+        """Initialize game state"""
+        if not self.game_started:
+            self.game_started = True
+            self.in_character_selection = True
+            
+            # Match JJK_Game setup
+            character_names = ['Gojo', 'Sukuna', 'Megumi', 'Nanami', 'Nobara']
+            factory = CharacterFactory()
+            self.available_chars = [factory.create_character(name) for name in character_names]
+            self.game_manager = BattleManager(self.available_chars)
+            
+            # Show character selection
+            self.write_to_game("\nTime to show what real Jujutsu really is...\n")
+            self.write_to_game("Choose your character:\n")
+            for i, char in enumerate(self.available_chars, 1):
+                self.write_to_game(f"{i}: {char.get_description()}\n")
+
+    def handle_char_select(self, player: str, choice: int):
+        """Handle character selection"""
+        if not 0 <= choice < len(self.available_chars):
+            return
+            
+        char = self.available_chars[choice]
+        self.selected_chars.append(char)
+        self.write_to_game(f"\n{player} selected {char.name}")
+        
+        if len(self.selected_chars) == len(self.connected_players):
+            self.start_battle_phase()
+
+    def start_battle_phase(self):
+        """Start the battle after character selection"""
+        self.battle_started = True
+        self.in_character_selection = False
+        self.game_manager._BattleManager__players = self.selected_chars
+        self.current_turn = 0
+        
+        if self.is_players_turn():
+            self.enable_combat_controls()
+        self.update_battle_display()
+
+    def handle_combat_update(self, data: dict):
+        """Handle combat actions and updates"""
+        action = data['action']
+        player = self.get_player_by_name(data['player'])
+        
+        if action == 'attack':
+            target = self.get_player_by_name(data['target'])
+            player.attack(target)
+        elif action == 'defend':
+            player.defend()
+        elif action == 'special':
+            targets = [self.get_player_by_name(t) for t in data['targets']]
+            player.special(targets, self.current_turn)
+            
+        # Handle status effects
+        player.handle_poison()
+        player.handle_stun()
+        player.handle_defense_boost()
+        
+        self.next_turn()
+        self.update_battle_display()
+
+    def update_battle_display(self):
+        """Update the game display with current battle state"""
+        self.write_to_game("\nCurrent Status:\n")
+        self.write_to_game("-" * 60 + "\n")
+        
+        # Show alive players
+        for player in self.game_manager._BattleManager__players:
+            if player.is_alive():
+                status = f"{player.name} - HP: {player.hp}"
+                if player.poison.is_active():
+                    status += f" (Poisoned: {player.poison.duration} turns)"
+                if player.stun.is_active():
+                    status += " (Stunned)"
+                self.write_to_game(f" - {status}\n")
+                
+        # Show current turn
+        current = self.game_manager._BattleManager__players[self.current_turn]
+        self.write_to_game(f"\n{current.name}'s turn!\n")
+
+    def handle_game_over(self, winner: str):
+        """Handle game over state"""
+        self.write_to_game(f"\n{winner} is the chosen one!\n")
+        self.game_started = False
+        self.battle_started = False
+        self.disable_combat_controls()
+        
 if __name__ == "__main__":
     client = UnifiedClient()
     client.run()
