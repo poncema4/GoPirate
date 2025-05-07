@@ -50,8 +50,7 @@ GoPirate/
 ├── README.md
 ├── uml_diagram.wsd       # UML class diagram
 ├── uml_diagram_qr_code.png         # QR-code for the UML diagram
-├── uml_diagram.png         # UML diagram image
-└──
+└── uml_diagram.png         # UML diagram image
 ```
 
 ## How to Run
