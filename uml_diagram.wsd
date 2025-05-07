@@ -1,0 +1,168 @@
+@startuml GoPirate
+
+' Style settings
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam packageStyle rectangle
+
+package "Network" {
+    class NetworkManager {
+        - server_socket: socket
+        - clients: Dict[socket, str]
+        - client_count: int
+        - message_handler: Callable
+        + __init__(host: str, port: int)
+        + set_message_handler(handler: Callable)
+        + broadcast(message: str)
+        + handle_client(socket, id: int)
+        + run()
+    }
+
+    class ChatServer {
+        - server_socket: socket
+        - clients: Dict[socket, str]
+        - lock: threading.Lock
+        - root: tk.Tk
+        - log_display: scrolledtext.ScrolledText
+        + __init__(host: str, port: int)
+        + setup_gui()
+        + log_message(message: str)
+        + broadcast(message: str, sender: socket)
+        + handle_client(socket, addr)
+        + start()
+        + accept_clients()
+    }
+}
+
+package "Game" {
+    class BattleManager {
+        - players: List[Character]
+        - current_turn: int
+        - game_state: str
+        + add_player(player: Character)
+        + start_battle()
+        + handle_combat(attacker: str, target: str, action: str)
+        + next_turn()
+        + is_game_over(): bool
+        + get_winner(): Character
+    }
+
+    class Character {
+        - name: str
+        - hp: int
+        - max_hp: int
+        - attack_power: int
+        - defense: int
+        - special_ability: SpecialAbility
+        - status_effects: List[StatusEffect]
+        + attack(target: Character)
+        + defend()
+        + special(targets: List[Character], turn: int)
+        + take_damage(amount: int)
+        + heal(amount: int)
+        + is_alive(): bool
+        + handle_status_effects()
+    }
+
+    class CharacterFactory {
+        - character_templates: Dict[str, Dict]
+        + create_character(name: str): Character
+        - load_templates()
+        - create_special_ability(type: str): SpecialAbility
+        - create_stats(template: Dict): CharacterStats
+    }
+
+    class SpecialAbility {
+        - name: str
+        - description: str
+        - cooldown: int
+        - last_used: int
+        + use(user: Character, targets: List[Character])
+        + is_available(current_turn: int): bool
+    }
+
+    class StatusEffect {
+        - type: StatusType
+        - duration: int
+        - strength: int
+        + apply(target: Character)
+        + tick()
+        + is_active(): bool
+    }
+}
+
+package "GUI" {
+    class UnifiedClient {
+        ' Layout Components
+        - root: tk.Tk
+        - left_panel: ttk.Frame
+        - right_panel: ttk.Frame
+        - game_display: scrolledtext.ScrolledText
+        - chat_display: scrolledtext.ScrolledText
+        - chatbot_display: scrolledtext.ScrolledText
+
+        ' Game State
+        - game_manager: BattleManager
+        - player_name: str
+        - connected_players: Set[str]
+        - current_turn: int
+        - combat_action: str
+        - selected_characters: Dict[str, Character]
+
+        ' Network
+        - client_socket: socket
+        - receiver_thread: Thread
+
+        ' Setup Methods
+        + setup_layout()
+        + setup_game_panel()
+        + setup_chatbot_panel()
+        + setup_multiplayer_chat()
+
+        ' Network Methods
+        + connect_to_server()
+        + send_message(data: dict)
+        + receive_messages()
+
+        ' Game Methods
+        + handle_game_input()
+        + handle_combat_action()
+        + process_turn()
+        + update_game_display()
+
+        ' Chat Methods
+        + handle_chat_input()
+        + handle_chatbot_input()
+        + display_message()
+    }
+
+    class ChatbotSystem {
+        - responses: Dict[str, str]
+        - context: Dict[str, Any]
+        + process_query(query: str): str
+        + handle_help(): str
+        + handle_order_status(order_id: str): str
+        + handle_refund(order_id: str): str
+        - parse_intent(query: str): str
+    }
+}
+
+' Relationships
+NetworkManager -- ChatServer: manages >
+UnifiedClient *-- BattleManager: contains
+UnifiedClient *-- ChatbotSystem: contains
+UnifiedClient ..> NetworkManager: uses
+BattleManager o-- Character: manages
+CharacterFactory ..> Character: creates
+Character *-- SpecialAbility: implements
+Character o-- StatusEffect: affects
+
+' Interaction flows
+UnifiedClient --> NetworkManager: sends messages 
+NetworkManager --> UnifiedClient: broadcasts updates 
+UnifiedClient --> BattleManager: controls game 
+BattleManager --> UnifiedClient: updates state 
+UnifiedClient --> ChatbotSystem: processes queries 
+ChatbotSystem --> UnifiedClient: returns responses 
+
+@enduml
