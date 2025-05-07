@@ -18,7 +18,8 @@ A multiplayer battle game with an integrated chat system and customer service ch
 - **Customer Service Chatbot**
   - AI-powered responses
   - Help system
-  - Order status and refund request handling
+  - Assist players with mid-game question
+  - Update unknown-queries to provide enhanced updates in the future
 
 ## Requirements
 
@@ -47,7 +48,10 @@ GoPirate/
 |   ├── chat_client.py      # Reference chat application
 |   └── chat_server.py      # Reference server application
 ├── README.md
-└── uml_diagram.wsd       # UML class diagram
+├── uml_diagram.wsd       # UML class diagram
+├── uml_diagram_qr_code.png         # QR-code for the UML diagram
+├── uml_diagram.png         # UML diagram image
+└──
 ```
 
 ## How to Run
@@ -64,7 +68,7 @@ python GoPirate_GUI/chat_client.py
 
 3. Enter your name when prompted and connect to the server
 
-4. Once 2-5 players have joined, any player can start the game
+4. Once 2-5 players have joined, the "host" client can press start game
 
 ## Game Instructions
 
