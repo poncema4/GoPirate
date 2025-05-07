@@ -43,11 +43,9 @@ GoPirate/
 ├── JJK_Game/
 │   ├── battle_manager.py       # Game logic
 │   └── character_factory.py    # Character creation
-|
 ├── GUI_Chat/
 |   ├── chat_client.py      # Reference chat application
 |   └── chat_server.py      # Reference server application
-|
 ├── README.md
 └── uml_diagram.wsd       # UML class diagram
 ```
