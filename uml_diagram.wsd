@@ -148,7 +148,7 @@ package "GUI" {
 }
 
 ' Relationships
-NetworkManager -- ChatServer: manages >
+NetworkManager -- ChatServer: manages
 UnifiedClient *-- BattleManager: contains
 UnifiedClient *-- ChatbotSystem: contains
 UnifiedClient ..> NetworkManager: uses
