@@ -99,26 +99,25 @@ class Character:
             f"  - Cooldown: {self.special_move.cooldown} turns\n"
         )
 
-    def attack(self, target: 'Character') -> None:
+    def attack(self, target: 'Character') -> str:
         """
         Deals damage to the given target based on this character's attack class.
         :param target: Character receiving the attack.
         :return: None
         """
-        slow_print(self._attack_move.voiceline)
-        self._attack_move.apply(self, target)
+        print(self._attack_move.voiceline)
+        return self._attack_move.apply(self, target)
 
-    def defend(self) -> None:
+    def defend(self) -> str:
         """
         Applies this character's defense boost to their defense class.
         :return: None
         """
         if not self._defense_move.is_boost_active():
             self._defense_move.apply()
-            slow_print(f"{self._name} strengthens themselves, adding {self._defense_move.boost} defense.")
+            return f"{self._name} strengthens themselves, adding {self._defense_move.boost} defense."
         else:
-            slow_print(f"{self._name} is already defending this turn.")
-        time.sleep(1)
+            return f"{self._name} is already defending this turn."
 
     def handle_defense_boost(self) -> None:
         """
@@ -138,11 +137,11 @@ class Character:
         @return: True if the special was applied, False otherwise.
         """
         if self._special_move.is_available(turn):
-            slow_print(self._special_move.voiceline)
+            print(self._special_move.voiceline)
             self._special_move.apply(targets)
             self._special_move.last_used = turn
         else:
-            slow_print(f"{self._special_move.name} is on cooldown! Choose another action.")
+            print(f"{self._special_move.name} is on cooldown! Choose another action.")
             return False
         time.sleep(1)
         return True

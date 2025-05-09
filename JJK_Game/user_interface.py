@@ -26,12 +26,12 @@ def get_valid_input(message: str, error_message: str, choices: list) -> int:
     print(message)
     while True:
         for i, choice in enumerate(choices):
-            slow_print(f"    {i + 1}: {choice}")
+            print(f"    {i + 1}: {choice}")
         try:
             user_input = int(input("")) - 1
             if 0 <= user_input < len(choices):
                 return user_input
             else:
-                slow_print(error_message)
+                print(error_message)
         except ValueError:
-            slow_print(error_message)
+            print(error_message)

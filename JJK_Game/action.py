@@ -81,7 +81,7 @@ class Attack(Action):
     # endregion
 
     # region Methods
-    def apply(self, attacker: Character, defender: Character) -> None:
+    def apply(self, attacker: Character, defender: Character) -> str:
         """
         Computes the amount of damage dealt after defense and checks if the defender is defeated.
 
@@ -90,11 +90,12 @@ class Attack(Action):
         """
         damage = max(self.__damage - defender.defense, 0)
         defender.hp -= damage
-        slow_print(f"{attacker.name} attacks {defender.name} for {damage} damage!")
-        slow_print(f"{defender.name} has {defender.hp} HP remaining.")
+        response: str  = ''
+        response += f"{attacker.name} attacks {defender.name} for {damage} damage!\n"
+        response += f"{defender.name} has {defender.hp} HP remaining."
         if not defender.is_alive():
             print(f"{defender.name} has been defeated!")
-        time.sleep(1)
+        return response
     # endregion
 
 

@@ -121,6 +121,7 @@ class GameServer:
 
         while not self.battle_manager.is_battle_over():
             player = self.battle_manager.get_current_player()
+            self.broadcast_new_turn(player.name)
             if not player:
                 break
             client = self.clients[self.battle_manager._BattleManager__players.index(player)]
@@ -143,13 +144,19 @@ class GameServer:
                 target_msg = self.wait_for_message(client, 'target')
                 target = self.battle_manager.get_target_by_name(target_msg['target'])
 
-            self.battle_manager.apply_action(player, action, target)
+            self.send_chat(self.battle_manager.apply_action(player, action, target))
             self.battle_manager.advance_turn()
             self.broadcast_state()
 
         self.broadcast({
             'type': 'battle_over',
             'winner': self.battle_manager.get_winner()
+        })
+
+    def broadcast_new_turn(self, name: str):
+        self.broadcast({
+            'type': 'new_turn',
+            'name': name
         })
 
     def broadcast_state(self):

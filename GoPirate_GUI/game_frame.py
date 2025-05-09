@@ -94,7 +94,8 @@ class GameFrame(tk.Frame):
     def render_action_buttons(self):
         """Show action buttons during player's turn"""
         self.clear_buttons()
-        self.info_label.config(text=f"{self.player}'s turn: Choose an action")
+        label_txt: str = f"{self.player}'s turn: Choose an action" if self.is_my_turn else f"{self.current_player}'s turn."
+        self.info_label.config(text=label_txt)
 
         # Action buttons
         actions = [
@@ -129,7 +130,7 @@ class GameFrame(tk.Frame):
     def perform_action(self, action_type, target):
         """Handle action confirmation"""
         self.info_label.config(text=f"{self.player} used {action_type} on {target}")
-        self.after(1500, self.end_turn)
+        self.after(0, self.end_turn)
 
     def end_turn(self):
         """Clean up after turn completion"""
@@ -147,6 +148,7 @@ class GameFrame(tk.Frame):
             self.sock.connect(('localhost', 5555))
             self.receive_thread = threading.Thread(target=self.receive_messages, daemon=True)
             self.receive_thread.start()
+            self.player = name
             self.send_message({'type': 'join', 'player_name': name})
         except ConnectionRefusedError:
             messagebox.showerror("Connection Error", "Could not connect to game server")
@@ -179,13 +181,15 @@ class GameFrame(tk.Frame):
                 self.after(0, lambda: messagebox.showerror("Connection Error", "Disconnected from server"))
                 break
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Error", f"Connection error: {str(e)}"))
+                self.after(0, lambda err=e : messagebox.showerror("Error", f"Connection error: {str(err)}"))
                 break
 
     def handle_server_message(self, data):
         """Process messages from server"""
         if data['type'] == 'player_assignment':
             self.after(100, self.set_player_info, data['player_name'])
+        elif data['type'] == 'new_turn':
+            self.after(100, lambda n : setattr(self, "current_player", n), data['name'])
         elif data['type'] == 'character_selection':
             self.after(100, self.render_character_selection, data['descriptions'])
         elif data['type'] == 'action_selection':
@@ -215,6 +219,7 @@ class GameFrame(tk.Frame):
         """Handle defend action"""
         if self.is_my_turn:
             self.send_message({'type': 'action', 'action': 'defend'})
+        self.end_turn()
 
     def handle_special(self):
         """Handle special action"""
@@ -254,17 +259,3 @@ class GameFrame(tk.Frame):
         except:
             pass
         self.master.destroy()
-
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    root.title('JJK Battle Client')
-
-    # Get player name before starting
-    player_name = simpledialog.askstring("Player Name", "Enter your player name:")
-    if not player_name:
-        sys.exit()
-
-    frame = GameFrame(root, player_name)
-    root.protocol("WM_DELETE_WINDOW", frame.on_close)
-    root.mainloop()

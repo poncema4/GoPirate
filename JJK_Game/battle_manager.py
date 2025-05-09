@@ -52,14 +52,16 @@ class BattleManager:
         player.handle_poison()
         return player.handle_stun()
 
-    def apply_action(self, actor: Character, action: str, target: Optional[Character] = None):
+    def apply_action(self, actor: Character, action: str, target: Optional[Character] = None) -> str:
         if action == 'attack' and target:
-            actor.attack(target)
+            return actor.attack(target)
         elif action == 'defend':
-            actor.defend()
+            return actor.defend()
         elif action == 'special':
             others = [p for p in self.__players if p != actor and p.is_alive()]
             actor.special(others, self.__turn)
+            return actor.special_move.voiceline
+        return ''
 
     def get_alive_targets(self, exclude: Optional[Character] = None) -> List[str]:
         return [p.name for p in self.__players if p.is_alive() and p != exclude]
