@@ -113,6 +113,7 @@ class GameServer:
             msg = self.wait_for_message(client, 'character_choice')
             char_name = msg['character']
             chosen = self.battle_manager.assign_character(char_name)
+            self.available_characters = [c for c in self.available_characters if not c.name == char_name]
             self.send_chat(f"{self.player_names[client]} has selected {char_name}.")
 
     def run_battle(self):
