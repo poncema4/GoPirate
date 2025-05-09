@@ -8,46 +8,65 @@ from JJK_Game.character_factory import CharacterFactory
 class GameFrame(tk.Frame):
     def __init__(self, master, players):
         super().__init__(master, relief=tk.RAISED, borderwidth=1)
+        self.output_area = None
         self.factory = CharacterFactory()
         self.players = players
         self.characters = []
         self.player_characters = {}  # Maps player names to their chosen characters
+        self.state = 'start'
         self.current_turn = 0
         self.battle_in_progress = False
         self.current_player = None
+
+        self.pack()
+        self.button_frame = tk.Frame(self)
+        self.button_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        self.button_frame.grid_columnconfigure(0, weight=1)
+
+        self.info_label = tk.Label(self, text="", font=('Arial', 12, 'bold'))
+        self.info_label.pack()
+
         self.setup_ui()
+
+    def clear_buttons(self):
+        for child in self.button_frame.winfo_children():
+            child.destroy()
         
     def setup_ui(self):
-        # Game title
-        tk.Label(self, text="JJK Game Terminal", font=('Arial', 12, 'bold')).pack(pady=5)
-        
-        # Game output area
-        self.output_area = scrolledtext.ScrolledText(self, height=20, width=60)
-        self.output_area.pack(padx=5, pady=5)
-        
-        # Actions frame
-        actions_frame = ttk.Frame(self)
-        actions_frame.pack(fill=tk.X, padx=5, pady=5)
-        
-        # Target input for entering player numbers
-        self.target_input = ttk.Entry(actions_frame, width=10)
-        self.target_input.pack(side=tk.LEFT, padx=5)
-        
-        # Action buttons
-        self.attack_btn = ttk.Button(actions_frame, text="Attack", command=self.handle_attack)
-        self.attack_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.defend_btn = ttk.Button(actions_frame, text="Defend", command=self.handle_defend)
-        self.defend_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.special_btn = ttk.Button(actions_frame, text="Special", command=self.handle_special)
-        self.special_btn.pack(side=tk.LEFT, padx=5)
-        
-        # Start button
-        self.start_btn = ttk.Button(self, text="Start Game", command=self.start_game)
-        self.start_btn.pack(pady=5)
-        
-        self.disable_combat_buttons()
+        self.clear_buttons()
+        self.info_label.configure(text="Welcome to the game!")
+        start_btn = ttk.Button(self.button_frame, text="Start Game", command=self.start_game)
+        start_btn.pack()
+        # # Game title
+        # tk.Label(self, text="JJK Game Terminal", font=('Arial', 12, 'bold')).pack(pady=5)
+        #
+        # # Game output area
+        # self.output_area = scrolledtext.ScrolledText(self, height=20, width=60)
+        # self.output_area.pack(padx=5, pady=5)
+        #
+        # # Actions frame
+        # actions_frame = ttk.Frame(self)
+        # actions_frame.pack(fill=tk.X, padx=5, pady=5)
+        #
+        # # Target input for entering player numbers
+        # self.target_input = ttk.Entry(actions_frame, width=10)
+        # self.target_input.pack(side=tk.LEFT, padx=5)
+        #
+        # # Action buttons
+        # self.attack_btn = ttk.Button(actions_frame, text="Attack", command=self.handle_attack)
+        # self.attack_btn.pack(side=tk.LEFT, padx=5)
+        #
+        # self.defend_btn = ttk.Button(actions_frame, text="Defend", command=self.handle_defend)
+        # self.defend_btn.pack(side=tk.LEFT, padx=5)
+        #
+        # self.special_btn = ttk.Button(actions_frame, text="Special", command=self.handle_special)
+        # self.special_btn.pack(side=tk.LEFT, padx=5)
+        #
+        # # Start button
+        # self.start_btn = ttk.Button(self, text="Start Game", command=self.start_game)
+        # self.start_btn.pack(pady=5)
+        #
+        # self.disable_combat_buttons()
 
     def write_output(self, text):
         self.output_area.configure(state='normal')
@@ -55,9 +74,44 @@ class GameFrame(tk.Frame):
         self.output_area.see(tk.END)
         self.output_area.configure(state='disabled')
 
+    def render_character_selection(self):
+        self.clear_buttons()
+        self.info_label.configure(text="Choose your character:")
+
+        character_names = ['Gojo', 'Sukuna', 'Megumi', 'Nanami', 'Nobara']
+        self.characters = [self.factory.create_character(name) for name in character_names]
+
+        # Scrollable frame
+        canvas = tk.Canvas(self.button_frame, height=300)  # Fixed height
+        scrollbar = tk.Scrollbar(self.button_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        for character in self.characters:
+            btn = tk.Button(
+                scrollable_frame,
+                text=character.get_description(),
+                anchor="w",
+                justify="left",
+                wraplength=600
+            )
+            btn.configure(command=lambda c=character: self.handle_character_selection(c.name))
+            btn.pack(fill="x", padx=5, pady=2)
+
     def start_game(self):
         self.battle_in_progress = True
-        self.start_btn.configure(state='disabled')
+        self.state = 'select'
+        self.render_character_selection()
         
         # Initialize game
         character_names = ['Gojo', 'Sukuna', 'Megumi', 'Nanami', 'Nobara']
@@ -76,6 +130,7 @@ class GameFrame(tk.Frame):
         self.write_output(f"\n{self.current_player}'s turn to choose a character (1-{len(self.characters)})")
 
     def handle_character_selection(self, selection):
+
         try:
             idx = int(selection) - 1
             if 0 <= idx < len(self.characters):
@@ -201,3 +256,16 @@ class GameFrame(tk.Frame):
         self.defend_btn.configure(state='disabled')
         self.special_btn.configure(state='disabled') 
         self.target_input.configure(state='disabled')
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    root.title('JJK TEST')
+
+    # Example player list
+    players = ["Player 1", "Player 2"]
+
+    # Create and pack the game frame
+    frame = GameFrame(root, players)
+    frame.pack(fill="both", expand=True)
+
+    root.mainloop()
