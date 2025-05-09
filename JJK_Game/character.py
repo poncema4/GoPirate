@@ -1,6 +1,6 @@
-from action import Attack, Defend, SpecialMove
-from status_effects import Stun, Poison
-from user_interface import slow_print
+from JJK_Game.action import Attack, Defend, SpecialMove
+from JJK_Game.status_effects import Stun, Poison
+from JJK_Game.user_interface import slow_print
 import time
 
 

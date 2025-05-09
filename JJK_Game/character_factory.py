@@ -1,9 +1,9 @@
-from character import Character
-from characters.gojo import Gojo
-from characters.sukuna import Sukuna
-from characters.megumi import Megumi
-from characters.nanami import Nanami
-from characters.nobara import Nobara
+from JJK_Game.character import Character
+from JJK_Game.characters.gojo import Gojo
+from JJK_Game.characters.sukuna import Sukuna
+from JJK_Game.characters.megumi import Megumi
+from JJK_Game.characters.nanami import Nanami
+from JJK_Game.characters.nobara import Nobara
 
 
 class CharacterFactory:

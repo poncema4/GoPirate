@@ -1,5 +1,5 @@
-from action import *
-from character import Character
+from JJK_Game.action import *
+from JJK_Game.character import Character
 
 
 # region SUKUNA

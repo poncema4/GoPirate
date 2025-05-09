@@ -4,7 +4,6 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from JJK_Game.character_factory import CharacterFactory
-from JJK_Game.character import Character
 
 class GameFrame(tk.Frame):
     def __init__(self, master, players):
