@@ -6,11 +6,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from JJK_Game.character_factory import CharacterFactory
 
 class GameFrame(tk.Frame):
-    def __init__(self, master, players):
+    def __init__(self, master, player):
         super().__init__(master, relief=tk.RAISED, borderwidth=1)
         self.output_area = None
         self.factory = CharacterFactory()
-        self.players = players
+        self.player = player
+        self.character = None
         self.characters = []
         self.player_characters = {}  # Maps player names to their chosen characters
         self.state = 'start'
@@ -37,42 +38,6 @@ class GameFrame(tk.Frame):
         self.info_label.configure(text="Welcome to the game!")
         start_btn = ttk.Button(self.button_frame, text="Start Game", command=self.start_game)
         start_btn.pack()
-        # # Game title
-        # tk.Label(self, text="JJK Game Terminal", font=('Arial', 12, 'bold')).pack(pady=5)
-        #
-        # # Game output area
-        # self.output_area = scrolledtext.ScrolledText(self, height=20, width=60)
-        # self.output_area.pack(padx=5, pady=5)
-        #
-        # # Actions frame
-        # actions_frame = ttk.Frame(self)
-        # actions_frame.pack(fill=tk.X, padx=5, pady=5)
-        #
-        # # Target input for entering player numbers
-        # self.target_input = ttk.Entry(actions_frame, width=10)
-        # self.target_input.pack(side=tk.LEFT, padx=5)
-        #
-        # # Action buttons
-        # self.attack_btn = ttk.Button(actions_frame, text="Attack", command=self.handle_attack)
-        # self.attack_btn.pack(side=tk.LEFT, padx=5)
-        #
-        # self.defend_btn = ttk.Button(actions_frame, text="Defend", command=self.handle_defend)
-        # self.defend_btn.pack(side=tk.LEFT, padx=5)
-        #
-        # self.special_btn = ttk.Button(actions_frame, text="Special", command=self.handle_special)
-        # self.special_btn.pack(side=tk.LEFT, padx=5)
-        #
-        # # Start button
-        # self.start_btn = ttk.Button(self, text="Start Game", command=self.start_game)
-        # self.start_btn.pack(pady=5)
-        #
-        # self.disable_combat_buttons()
-
-    def write_output(self, text):
-        self.output_area.configure(state='normal')
-        self.output_area.insert(tk.END, text + "\n")
-        self.output_area.see(tk.END)
-        self.output_area.configure(state='disabled')
 
     def render_character_selection(self):
         self.clear_buttons()
@@ -82,7 +47,7 @@ class GameFrame(tk.Frame):
         self.characters = [self.factory.create_character(name) for name in character_names]
 
         # Scrollable frame
-        canvas = tk.Canvas(self.button_frame, height=300)  # Fixed height
+        canvas = tk.Canvas(self.button_frame, height=300)
         scrollbar = tk.Scrollbar(self.button_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas)
 
@@ -108,47 +73,80 @@ class GameFrame(tk.Frame):
             btn.configure(command=lambda c=character: self.handle_character_selection(c.name))
             btn.pack(fill="x", padx=5, pady=2)
 
+    def render_action_buttons(self):
+        self.clear_buttons()
+        self.info_label.config(text=f"{self.player}'s turn: Choose an action")
+
+        # Create a horizontal button container
+        action_frame = tk.Frame(self.button_frame)
+        action_frame.pack(fill="x", pady=5)
+
+        # Create 3 equal-width buttons
+        for label in ['Attack', 'Defend', 'Special']:
+            tk.Button(
+                action_frame, text=label,
+                command=lambda l=label: self.render_target_selection(l.lower())
+            ).pack(side="left", expand=True, fill="both", padx=2, ipady=30)
+
+    def render_target_selection(self, action_type):
+        self.clear_buttons()
+        self.info_label.config(text=f"{self.player}, select your target:")
+        for char in self.characters:
+            if char != self.character:
+                tk.Button(self.button_frame, text=self.player,
+                          command=lambda p=self.player: self.perform_action(action_type, p)).pack(pady=2)
+
+    def perform_action(self, action_type, target):
+        self.info_label.config(text=f"{self.player} used {action_type} on {target}")
+        self.after(1500, self.end_turn)
+
+    def end_turn(self):
+        self.render_action_buttons()
+
     def start_game(self):
         self.battle_in_progress = True
         self.state = 'select'
         self.render_character_selection()
         
         # Initialize game
-        character_names = ['Gojo', 'Sukuna', 'Megumi', 'Nanami', 'Nobara']
-        self.characters = [self.factory.create_character(name) for name in character_names]
-        
-        # Clear output and show character options
-        self.output_area.configure(state='normal')
-        self.output_area.delete(1.0, tk.END)
-        self.output_area.configure(state='disabled')
-        
-        self.write_output("Choose your character:\n")
-        for i, char in enumerate(self.characters, 1):
-            self.write_output(f"{i}: {char.get_description()}")
-        
-        self.current_player = self.players[0]
-        self.write_output(f"\n{self.current_player}'s turn to choose a character (1-{len(self.characters)})")
+        # character_names = ['Gojo', 'Sukuna', 'Megumi', 'Nanami', 'Nobara']
+        # self.characters = [self.factory.create_character(name) for name in character_names]
+        #
+        # # Clear output and show character options
+        # self.output_area.configure(state='normal')
+        # self.output_area.delete(1.0, tk.END)
+        # self.output_area.configure(state='disabled')
+
+        # self.write_output("Choose your character:\n")
+        # for i, char in enumerate(self.characters, 1):
+        #     self.write_output(f"{i}: {char.get_description()}")
+        #
+        # self.current_player = self.players[0]
+        # self.write_output(f"\n{self.current_player}'s turn to choose a character (1-{len(self.characters)})")
 
     def handle_character_selection(self, selection):
+        self.character = selection
+        self.info_label.config(text=f'You selected {selection}. Wait for your opponents to choose a character.')
+        self.render_action_buttons()
 
-        try:
-            idx = int(selection) - 1
-            if 0 <= idx < len(self.characters):
-                chosen = self.characters.pop(idx)
-                self.player_characters[self.current_player] = chosen
-                self.write_output(f"{self.current_player} selected {chosen.name}")
-                
-                if len(self.player_characters) < len(self.players):
-                    # Next player's turn
-                    self.current_player = self.players[len(self.player_characters)]
-                    self.write_output(f"\n{self.current_player}'s turn to choose a character (1-{len(self.characters)})")
-                else:
-                    # All players have chosen, start battle
-                    self.start_battle()
-            else:
-                self.write_output("Invalid selection. Try again.")
-        except ValueError:
-            self.write_output("Please enter a valid number.")
+        # try:
+        #     idx = int(selection) - 1
+        #     if 0 <= idx < len(self.characters):
+        #         chosen = self.characters.pop(idx)
+        #         self.player_characters[self.current_player] = chosen
+        #         self.write_output(f"{self.current_player} selected {chosen.name}")
+        #
+        #         if len(self.player_characters) < len(self.players):
+        #             # Next player's turn
+        #             self.current_player = self.players[len(self.player_characters)]
+        #             # self.write_output(f"\n{self.current_player}'s turn to choose a character (1-{len(self.characters)})")
+        #         else:
+        #             # All players have chosen, start battle
+        #             self.start_battle()
+        #     else:
+        #         pass # self.write_output("Invalid selection. Try again.")
+        # except ValueError:
+        #     pass # self.write_output("Please enter a valid number.")
 
     def handle_attack(self):
         if not self.battle_in_progress or not self.is_current_turn():
