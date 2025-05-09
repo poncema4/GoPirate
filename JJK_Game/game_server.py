@@ -15,6 +15,9 @@ class GameServer:
         self.server_socket.bind((HOST, PORT))
         self.server_socket.listen(MAX_PLAYERS)
 
+        self.chat_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.chat_socket.connect(('localhost', 12345))
+
         self.clients = []
         self.client_threads = []
         self.messages = []
@@ -28,8 +31,10 @@ class GameServer:
         self.battle_manager = BattleManager(self.available_characters)
         self.game_started = False
 
+    def send_chat(self, msg):
+        self.chat_socket.send(f'[SERVER]: {msg}'.encode())
+
     def start(self):
-        print(f"[Server] Listening on {HOST}:{PORT}...")
         Thread(target=self.accept_clients, daemon=True).start()
 
         while not self.game_started:
@@ -45,7 +50,6 @@ class GameServer:
         self.run_battle()
 
     def accept_clients(self):
-        print(f"[Server] Accepting up to {MAX_PLAYERS} players...")
 
         while len(self.clients) < MAX_PLAYERS:
             client_socket, _ = self.server_socket.accept()
@@ -69,7 +73,7 @@ class GameServer:
 
                     if msg.get("type") == "join":
                         self.player_names[client_socket] = msg["player_name"]
-                        print(f"[Server] Player joined: {msg['player_name']}")
+                        self.send_chat(f"{msg['player_name']} has joined the game.")
                         continue
 
                     msg["__client"] = client_socket
@@ -77,7 +81,7 @@ class GameServer:
                         self.messages.append(msg)
 
             except Exception as e:
-                print(f"[Server] Client disconnected: {self.player_names.get(client_socket, client_socket)}")
+                self.send_chat(f"An error occurred: {str(e)}")
                 break
 
     def send_json(self, sock, data):
@@ -109,7 +113,7 @@ class GameServer:
             msg = self.wait_for_message(client, 'character_choice')
             char_name = msg['character']
             chosen = self.battle_manager.assign_character(char_name)
-            print(f"[Server] {self.player_names[client]} selected {char_name}")
+            self.send_chat(f"{self.player_names[client]} has selected {char_name}.")
 
     def run_battle(self):
         self.battle_manager.start_battle()
