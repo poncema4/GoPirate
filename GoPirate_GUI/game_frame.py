@@ -1,52 +1,68 @@
+import json
+import threading
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+import socket
+from tkinter import ttk, scrolledtext, messagebox, simpledialog
 import sys
 import os
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from JJK_Game.character_factory import CharacterFactory
 
+
 class GameFrame(tk.Frame):
-    def __init__(self, master, player):
+    def __init__(self, master, player_name=None):
         super().__init__(master, relief=tk.RAISED, borderwidth=1)
-        self.output_area = None
         self.factory = CharacterFactory()
-        self.player = player
-        self.character = None
-        self.characters = []
-        self.player_characters = {}  # Maps player names to their chosen characters
+        self.player = player_name
+        self.character = ''
         self.state = 'start'
-        self.current_turn = 0
         self.battle_in_progress = False
         self.current_player = None
+        self.is_my_turn = False
+        self.available_targets = []
+        self.characters = []
 
-        self.pack()
+        # Network setup
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        # UI Setup
+        self.pack(fill="both", expand=True)
+
+        # Info label for turn/status info
+        self.info_label = tk.Label(self, text="", font=('Arial', 12, 'bold'))
+        self.info_label.pack(pady=5)
+
+        # Button frame for action buttons
         self.button_frame = tk.Frame(self)
         self.button_frame.pack(fill="both", expand=True, padx=5, pady=5)
-        self.button_frame.grid_columnconfigure(0, weight=1)
 
-        self.info_label = tk.Label(self, text="", font=('Arial', 12, 'bold'))
-        self.info_label.pack()
-
+        # Initial UI setup
         self.setup_ui()
 
     def clear_buttons(self):
+        """Clear all buttons from the button frame"""
         for child in self.button_frame.winfo_children():
             child.destroy()
-        
-    def setup_ui(self):
-        self.clear_buttons()
-        self.info_label.configure(text="Welcome to the game!")
-        start_btn = ttk.Button(self.button_frame, text="Start Game", command=self.start_game)
-        start_btn.pack()
 
-    def render_character_selection(self):
+    def setup_ui(self):
+        """Initialize the UI based on current game state"""
+        self.clear_buttons()
+        if not self.player:
+            self.info_label.configure(text="Connecting to server...")
+        else:
+            self.info_label.configure(text=f"Welcome {self.player}!")
+
+        if not self.battle_in_progress:
+            start_btn = ttk.Button(self.button_frame, text="Start Game", command=self.start_game)
+            start_btn.pack()
+
+    def render_character_selection(self, descriptions: list[dict[str, str]]):
+        """Show character selection UI"""
         self.clear_buttons()
         self.info_label.configure(text="Choose your character:")
 
-        character_names = ['Gojo', 'Sukuna', 'Megumi', 'Nanami', 'Nobara']
-        self.characters = [self.factory.create_character(name) for name in character_names]
-
-        # Scrollable frame
+        # Scrollable frame for character selection
         canvas = tk.Canvas(self.button_frame, height=300)
         scrollbar = tk.Scrollbar(self.button_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas)
@@ -62,208 +78,193 @@ class GameFrame(tk.Frame):
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        for character in self.characters:
+        for description in descriptions:
+            name = description['name']
+            description = description['description']
             btn = tk.Button(
                 scrollable_frame,
-                text=character.get_description(),
+                text=description,
                 anchor="w",
                 justify="left",
-                wraplength=600
+                wraplength=600,
+                command= lambda n=name : self.handle_character_selection(n)
             )
-            btn.configure(command=lambda c=character: self.handle_character_selection(c.name))
             btn.pack(fill="x", padx=5, pady=2)
 
     def render_action_buttons(self):
+        """Show action buttons during player's turn"""
         self.clear_buttons()
         self.info_label.config(text=f"{self.player}'s turn: Choose an action")
 
-        # Create a horizontal button container
-        action_frame = tk.Frame(self.button_frame)
-        action_frame.pack(fill="x", pady=5)
+        # Action buttons
+        actions = [
+            ("Attack", self.handle_attack),
+            ("Defend", self.handle_defend),
+            ("Special", self.handle_special)
+        ]
 
-        # Create 3 equal-width buttons
-        for label in ['Attack', 'Defend', 'Special']:
-            tk.Button(
-                action_frame, text=label,
-                command=lambda l=label: self.render_target_selection(l.lower())
-            ).pack(side="left", expand=True, fill="both", padx=2, ipady=30)
+        for text, command in actions:
+            btn = ttk.Button(
+                self.button_frame,
+                text=text,
+                command=command,
+                state="normal" if self.is_my_turn else "disabled"
+            )
+            btn.pack(pady=5, fill="x")
 
-    def render_target_selection(self, action_type):
+    def render_target_selection(self, targets):
+        """Show target selection UI"""
         self.clear_buttons()
         self.info_label.config(text=f"{self.player}, select your target:")
-        for char in self.characters:
-            if char != self.character:
-                tk.Button(self.button_frame, text=self.player,
-                          command=lambda p=self.player: self.perform_action(action_type, p)).pack(pady=2)
+        self.available_targets = targets
+
+        for target in targets:
+            btn = ttk.Button(
+                self.button_frame,
+                text=target,
+                command=lambda t=target: self.select_target(t)
+            )
+            btn.pack(pady=2, fill="x")
 
     def perform_action(self, action_type, target):
+        """Handle action confirmation"""
         self.info_label.config(text=f"{self.player} used {action_type} on {target}")
         self.after(1500, self.end_turn)
 
     def end_turn(self):
+        """Clean up after turn completion"""
+        self.is_my_turn = False
         self.render_action_buttons()
 
     def start_game(self):
+        """Initialize game start"""
         self.battle_in_progress = True
         self.state = 'select'
-        self.render_character_selection()
-        
-        # Initialize game
-        # character_names = ['Gojo', 'Sukuna', 'Megumi', 'Nanami', 'Nobara']
-        # self.characters = [self.factory.create_character(name) for name in character_names]
-        #
-        # # Clear output and show character options
-        # self.output_area.configure(state='normal')
-        # self.output_area.delete(1.0, tk.END)
-        # self.output_area.configure(state='disabled')
+        self.send_message({'type': 'start'})
 
-        # self.write_output("Choose your character:\n")
-        # for i, char in enumerate(self.characters, 1):
-        #     self.write_output(f"{i}: {char.get_description()}")
-        #
-        # self.current_player = self.players[0]
-        # self.write_output(f"\n{self.current_player}'s turn to choose a character (1-{len(self.characters)})")
+    def connect(self, name: str):
+        try:
+            self.sock.connect(('localhost', 5555))
+            self.receive_thread = threading.Thread(target=self.receive_messages, daemon=True)
+            self.receive_thread.start()
+            self.send_message({'type': 'join', 'player_name': name})
+        except ConnectionRefusedError:
+            messagebox.showerror("Connection Error", "Could not connect to game server")
+            self.master.destroy()
+            return
 
     def handle_character_selection(self, selection):
+        """Handle character selection"""
         self.character = selection
-        self.info_label.config(text=f'You selected {selection}. Wait for your opponents to choose a character.')
+        self.send_message({
+            'type': 'character_choice',
+            'character': selection
+        })
+        self.info_label.config(text=f"You selected {selection}. Waiting for others...")
+        self.clear_buttons()
+
+    def receive_messages(self):
+        """Thread for receiving server messages"""
+        buffer = b''
+        while True:
+            try:
+                data = self.sock.recv(1024)
+                if not data:
+                    break
+                buffer += data
+                while b'\n' in buffer:
+                    message, _, buffer = buffer.partition(b'\n')
+                    self.handle_server_message(json.loads(message))
+            except (ConnectionAbortedError, ConnectionResetError):
+                self.after(0, lambda: messagebox.showerror("Connection Error", "Disconnected from server"))
+                break
+            except Exception as e:
+                self.after(0, lambda: messagebox.showerror("Error", f"Connection error: {str(e)}"))
+                break
+
+    def handle_server_message(self, data):
+        """Process messages from server"""
+        if data['type'] == 'player_assignment':
+            self.after(100, self.set_player_info, data['player_name'])
+        elif data['type'] == 'character_selection':
+            self.after(100, self.render_character_selection, data['descriptions'])
+        elif data['type'] == 'action_selection':
+            self.after(100, self.enable_turn)
+        elif data['type'] == 'target_selection':
+            self.after(100, self.render_target_selection, data['targets'])
+        elif data['type'] == 'battle_over':
+            self.after(100, self.handle_battle_end, data['winner'])
+
+    def set_player_info(self, player_name):
+        """Set player name from server"""
+        self.player = player_name
+        self.info_label.config(text=f"Logged in as {player_name}")
+        self.setup_ui()
+
+    def enable_turn(self):
+        """Enable UI for player's turn"""
+        self.is_my_turn = True
         self.render_action_buttons()
 
-        # try:
-        #     idx = int(selection) - 1
-        #     if 0 <= idx < len(self.characters):
-        #         chosen = self.characters.pop(idx)
-        #         self.player_characters[self.current_player] = chosen
-        #         self.write_output(f"{self.current_player} selected {chosen.name}")
-        #
-        #         if len(self.player_characters) < len(self.players):
-        #             # Next player's turn
-        #             self.current_player = self.players[len(self.player_characters)]
-        #             # self.write_output(f"\n{self.current_player}'s turn to choose a character (1-{len(self.characters)})")
-        #         else:
-        #             # All players have chosen, start battle
-        #             self.start_battle()
-        #     else:
-        #         pass # self.write_output("Invalid selection. Try again.")
-        # except ValueError:
-        #     pass # self.write_output("Please enter a valid number.")
-
     def handle_attack(self):
-        if not self.battle_in_progress or not self.is_current_turn():
-            return
-            
-        target = self.get_target()
-        if target:
-            current_char = self.player_characters[self.current_player]
-            current_char.attack(target)
-            self.next_turn()
+        """Handle attack action"""
+        if self.is_my_turn:
+            self.send_message({'type': 'action', 'action': 'attack'})
 
     def handle_defend(self):
-        if not self.battle_in_progress or not self.is_current_turn():
-            return
-            
-        current_char = self.player_characters[self.current_player]
-        current_char.defend()
-        self.next_turn()
+        """Handle defend action"""
+        if self.is_my_turn:
+            self.send_message({'type': 'action', 'action': 'defend'})
 
     def handle_special(self):
-        if not self.battle_in_progress or not self.is_current_turn():
-            return
-            
-        target = self.get_target()
-        if target:
-            current_char = self.player_characters[self.current_player]
-            if current_char.special([target], self.current_turn):
-                self.next_turn()
+        """Handle special action"""
+        if self.is_my_turn:
+            self.send_message({'type': 'action', 'action': 'special'})
 
-    def get_target(self):
-        target_num = self.target_input.get().strip()
-        if not target_num.isdigit():
-            self.write_output("Please enter a valid target number")
-            return None
-            
-        try:
-            target_idx = int(target_num) - 1
-            valid_targets = [char for player, char in self.player_characters.items() 
-                           if player != self.current_player and char.is_alive()]
-            
-            if 0 <= target_idx < len(valid_targets):
-                return valid_targets[target_idx]
-            else:
-                self.write_output("Invalid target number")
-                return None
-        except ValueError:
-            self.write_output("Please enter a valid number")
-            return None
+    def select_target(self, target):
+        """Handle target selection"""
+        self.send_message({'type': 'target', 'target': target})
+        self.is_my_turn = False
+        self.render_action_buttons()
 
-    def start_battle(self):
-        self.write_output("\nTime to show what real Jujutsu really is...")
-        self.current_turn = 0
-        self.current_player = self.players[0]
-        self.enable_combat_buttons()
-        self.next_turn()
-
-    def next_turn(self):
-        # Handle status effects
-        current_char = self.player_characters[self.current_player]
-        current_char.handle_defense_boost()
-        current_char.handle_poison()
-        if current_char.handle_stun():
-            self.advance_turn()
-            return
-
-        alive_players = [p for p in self.players if self.player_characters[p].is_alive()]
-        if len(alive_players) <= 1:
-            self.end_game()
-            return
-
-        self.write_output(f"\n{self.current_player}'s turn!")
-        valid_targets = [char for player, char in self.player_characters.items() 
-                        if player != self.current_player and char.is_alive()]
-        
-        if valid_targets:
-            self.write_output("Available targets:")
-            for i, target in enumerate(valid_targets, 1):
-                self.write_output(f"{i}: {target}")
-
-    def advance_turn(self):
-        self.current_turn = (self.current_turn + 1) % len(self.players)
-        while not self.player_characters[self.players[self.current_turn]].is_alive():
-            self.current_turn = (self.current_turn + 1) % len(self.players)
-        self.current_player = self.players[self.current_turn]
-        self.next_turn()
-
-    def end_game(self):
-        winner = next(p for p in self.players if self.player_characters[p].is_alive())
-        self.write_output(f"\n{winner} is the chosen one!")
+    def handle_battle_end(self, winner):
+        """Handle battle conclusion"""
         self.battle_in_progress = False
-        self.disable_combat_buttons()
-        self.start_btn.configure(state='normal')
+        self.is_my_turn = False
+        self.info_label.config(text=f"Battle over! {winner} wins!")
+        self.clear_buttons()
+        restart_btn = ttk.Button(
+            self.button_frame,
+            text="Play Again",
+            command=self.start_game
+        )
+        restart_btn.pack()
 
-    def is_current_turn(self):
-        return self.battle_in_progress and self.current_player == self.players[self.current_turn]
+    def send_message(self, data):
+        """Send message to server"""
+        try:
+            self.sock.sendall(json.dumps(data).encode() + b'\n')
+        except Exception as e:
+            messagebox.showerror("Connection Error", f"Failed to send data: {str(e)}")
 
-    def enable_combat_buttons(self):
-        self.attack_btn.configure(state='normal')
-        self.defend_btn.configure(state='normal')
-        self.special_btn.configure(state='normal')
-        self.target_input.configure(state='normal')
+    def on_close(self):
+        """Clean up on window close"""
+        try:
+            self.sock.close()
+        except:
+            pass
+        self.master.destroy()
 
-    def disable_combat_buttons(self):
-        self.attack_btn.configure(state='disabled')
-        self.defend_btn.configure(state='disabled')
-        self.special_btn.configure(state='disabled') 
-        self.target_input.configure(state='disabled')
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.title('JJK TEST')
+    root.title('JJK Battle Client')
 
-    # Example player list
-    players = ["Player 1", "Player 2"]
+    # Get player name before starting
+    player_name = simpledialog.askstring("Player Name", "Enter your player name:")
+    if not player_name:
+        sys.exit()
 
-    # Create and pack the game frame
-    frame = GameFrame(root, players)
-    frame.pack(fill="both", expand=True)
-
+    frame = GameFrame(root, player_name)
+    root.protocol("WM_DELETE_WINDOW", frame.on_close)
     root.mainloop()

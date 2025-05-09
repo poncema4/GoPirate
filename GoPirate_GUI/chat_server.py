@@ -5,6 +5,7 @@ sys.path.append(os.path.dirname(__file__))
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 from network_manager import NetworkManager
+from JJK_Game.game_server import GameServer
 import threading
 import socket
 import json
@@ -99,6 +100,12 @@ class UnifiedServer:
         
         # Create network manager first
         self.network_manager = NetworkManager()
+
+        # Start the game server
+        self.game_server = GameServer()
+        server_thread = threading.Thread(target=self.game_server.start, daemon=True)
+        server_thread.start()
+        print("Game server started. Waiting for clients to join...")
         
         # Then setup UI
         self.setup_ui()

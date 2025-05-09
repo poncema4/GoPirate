@@ -176,6 +176,7 @@ class UnifiedClient:
             nonlocal name
             if name_var.get().strip():
                 name = name_var.get().strip()
+                self.game_frame.connect(name)
                 dialog.destroy()
         
         def on_enter(event):
