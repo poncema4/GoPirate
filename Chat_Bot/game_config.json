@@ -1,0 +1,28 @@
+{
+  "actions": {
+    "Attack": {
+      "description": "Standard offensive action that deals damage based on character abilities",
+      "effect": "Base damage varies by character"
+    },
+    "Defend": {
+      "description": "Protective action that reduces incoming damage using defensive techniques",
+      "effect": "Damage reduction varies by character"
+    },
+    "Special": {
+      "description": "Unique powerful ability with special effects, but requires cooldown turns",
+      "effect": "Varies by character (see character info)"
+    }
+  },
+  "strategies": [
+    "Team Composition Tip: Balance your team with at least one offensive, defensive, and tactical character",
+    "Combat Tip: Use Special moves strategically when they can hit multiple opponents",
+    "Defense Tip: Defend when anticipating enemy Special moves or when low on HP",
+    "Gojo Strategy: Use Unlimited Void when facing multiple opponents to maximize stun chance",
+    "Sukuna Warning: Malevolent Shrine ignores defense - heal or defend heavily before it's used",
+    "Megumi Tip: Save Mahoraga for when you need both damage and healing",
+    "Nanami Advice: Overtime has a short cooldown - use it frequently for pressure",
+    "Nobara Tip: Resonance poison works well against defensive opponents",
+    "Cooldown Management: Track enemy Special move cooldowns to anticipate their next move",
+    "HP Management: Don't wait until low HP to defend - mitigate damage early"
+  ]
+}

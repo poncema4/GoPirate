@@ -39,3 +39,10 @@ class CharacterFactory:
         else:
             raise ValueError(f"Character '{name}' does not exist in the factory.")
     # endregion
+
+factory = CharacterFactory()
+print(factory.create_character("Gojo").get_description())
+print(factory.create_character("Sukuna").get_description())
+print(factory.create_character("Megumi").get_description())
+print(factory.create_character("Nanami").get_description())
+print(factory.create_character("Nobara").get_description())

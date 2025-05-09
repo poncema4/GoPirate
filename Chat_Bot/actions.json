@@ -1,0 +1,16 @@
+{
+  "actions": {
+    "Attack": {
+      "description": "Standard offensive action that deals damage based on character abilities.",
+      "effect": "Base damage varies by character"
+    },
+    "Defend": {
+      "description": "Protective action that reduces incoming damage using defensive techniques.",
+      "effect": "Damage reduction varies by character"
+    },
+    "Special": {
+      "description": "Unique powerful ability with special effects, but requires cooldown turns.",
+      "effect": "Varies by character (see character info)"
+    }
+  }
+}

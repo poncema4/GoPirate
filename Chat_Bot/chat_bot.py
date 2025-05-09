@@ -5,58 +5,83 @@ import re
 from abc import ABC, abstractmethod
 from typing import *
 
-# OrderService: class
-class OrderService:
-    # Purpose: Backend service that prints out the return responses from ChatBot about a delivery
-    def track_order(self, order_id: str) -> str:
-        delivery_status: List[str] = ["out for delivery and will arrive today by 5 PM",
-                                     "in transit and will arrive tomorrow",
-                                     "at the local distribution center and will arrive within 2 days"]
-        return f"Your order is {random.choice(delivery_status)}."
+class GameDataLoader:
+    @staticmethod
+    def load_json(file_name: str) -> Dict:
+        """Load JSON data from file"""
+        try:
+            with open(file_name, 'r') as file:
+                return json.load(file)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Game data file {file_name} not found")
+        except json.JSONDecodeError:
+            raise ValueError(f"Invalid JSON in {file_name}")
 
-# RefundService: class
-class RefundService:
-    # Purpose: Backend service that prints out the return response from ChatBot about a refund
-    def process_refund(self, order_id: str, reason: Optional[str] = None) -> str:
-        if reason:
-            return f"Your refund request for a {reason} product has been submitted. Expect the refund in 5-7 business days."
-        else:
-            return "Your refund request has been submitted. Expect the refund in 5-7 business days."
+# Game Services
+class CharacterService:
+    def __init__(self, data_file: str = 'characters.json'):
+        data = GameDataLoader.load_json(data_file)
+        self.characters = data.get('characters', {})
 
-# ProductService: class
-class ProductService:
-    # Purpose: Manages product inventory and provides methods to check and extract product information
-    def __init__(self):
-        self.products: List[str] = ["iPhone 15 Pro", "iPhone 15", "iPhone",
-                                    "MacBook Air", "MacBook", "Mac Pro", 
-                                     "iPad Pro", "iPad", "AirPods", "Smartphone"]
-    
-    # Purpose: Has the stored products in inventory and checks if the given user is searching for one of the items in stock
-    # Effect: If the item is in stock return that the product is available, otherwise, return that the product is out of stock
-    def check_availability(self, product_name: str) -> str:
-        if product_name.lower() in [p.lower() for p in self.products]:
-            return f"Checking inventory... the {product_name} is currently available."
-        else:
-            return f"Checking inventory... sorry, it is currently out of stock. We expect new inventory next week."
-    
-    # Purpose: Gets the list of products from the class itself in self.products being initialized
-    def get_product_list(self) -> List[str]:
-        return self.products
-        
-    # Purpose: Extracts the products name if in the given list of products in inventory, handling lowercase and common words that may interfere
-    # Effect: If the product is in the query, return the product, otherwise just return an empty string
-    def extract_product_name(self, query: str) -> Optional[str]:
-        query_lower = query.lower()
-        for product in self.products:
-            if product.lower() in query_lower:
-                return product
-        common_words = ["is", "the", "available", "in", "stock", "do", "you", "have", 
-                      "check", "inventory", "checking", "availability", "of", "for"]        
-        words = query_lower.split()
-        candidate_words = [word for word in words if word not in common_words]
-        if candidate_words:
-            return candidate_words[0].capitalize()
-        return ""
+    def get_character_info(self, name: str) -> dict:
+        return self.characters.get(name.capitalize(), {})
+
+    def get_character_stats(self, name: str) -> str:
+        """Format character stats for display"""
+        char = self.get_character_info(name)
+        if not char:
+            return f"Character '{name}' not found"
+
+        stats = [
+            f"=== {name.upper()} ===",
+            f"Type: {char['type']} | HP: {char['hp']}",
+            "",
+            f"ATTACK: {char['attack']['name']}",
+            f"- {char['attack']['description']}",
+            f"- Damage: {char['attack']['damage']} HP",
+            "",
+            f"DEFENSE: {char['defense']['name']}",
+            f"- {char['defense']['description']}",
+            f"- Base: {char['defense']['base']} HP | Boost: {char['defense']['boost']} HP",
+            "",
+            f"SPECIAL: {char['special']['name']} (Cooldown: {char['special']['cooldown']} turns)",
+            f"- {char['special']['description']}",
+            "- Effects: " + ", ".join(char['special']['effects']),
+            "",
+            f"DESCRIPTION: {char['description']}"
+        ]
+        return "\n".join(stats)
+
+
+class ActionService:
+    def __init__(self, data_file: str = 'game_config.json'):
+        data = GameDataLoader.load_json(data_file)
+        self.actions = data.get('actions', {})
+
+    def get_action_info(self, action: str) -> Dict:
+        """Get action description and effects"""
+        return self.actions.get(action.capitalize(), {})
+
+    def format_action_info(self, action: str) -> str:
+        """Format action information for display"""
+        info = self.get_action_info(action)
+        if not info:
+            return f"Action '{action}' not found"
+        return (
+            f"=== {action.upper()} ===\n"
+            f"Description: {info['description']}\n"
+            f"Effect: {info['effect']}"
+        )
+
+
+class GameStrategyService:
+    def __init__(self, data_file: str = 'game_config.json'):
+        data = GameDataLoader.load_json(data_file)
+        self.strategies = data.get('strategies', [])
+
+    def get_random_strategy(self) -> str:
+        """Get a random strategy tip"""
+        return random.choice(self.strategies) if self.strategies else "No strategies available"
 
 # LiveAgentService: class
 class LiveAgentService:
@@ -70,54 +95,27 @@ class LiveAgentService:
 
 # BackendManager: class
 class BackendManager:
-    # Purpose: Uses the adapter pattern to provide an interface to the multiple backend services
     def __init__(self) -> None:
-        self.order_service = OrderService()
-        self.refund_service = RefundService()
-        self.product_service = ProductService()
-        self.live_agent_service = LiveAgentService()
+        self.character_service = CharacterService()
+        self.action_service = ActionService()
+        self.strategy_service = GameStrategyService()
 
-    # Purpose: Retrieves to the appropriate service based on the request type and return the appropriate response
-    def process_request(self, request_type: str, *args: Any) -> str:
-        if request_type == "order":
-            return self.order_service.track_order(args[0])
-        elif request_type == "refund":
-            return self.refund_service.process_refund(args[0], args[1] if len(args) > 1 else None)
-        elif request_type == "product":
-            return self.product_service.check_availability(args[0])
-        elif request_type == "live_agent":
-            return self.live_agent_service.connect()
-        return "Service not available."
-    
-    # Purpose: Provides direct access to the produce service objects and items in storage for usage
-    def get_product_service(self) -> ProductService:
-        return self.product_service
+    def process_request(self, request_type: str, *args) -> str:
+        if request_type == "character":
+            return self._format_character_response(args[0])
+        elif request_type == "action":
+            return self._format_action_response(args[0])
+        elif request_type == "advice":
+            return self.strategy_service.get_advice()
+        return "Request not supported."
 
-# QueryDatabase: class
-class QueryDatabase:
-    # Purpose: Loads and stores the predefined queries and their responses from a JSON file
-    # Effect: Provides a mechanism to match user queries with the predefined responses
-    def __init__(self, filepath: Optional[str] = None) -> None:
-        if filepath is None:
-            base_dir: str = os.path.dirname(os.path.abspath(__file__))
-            filepath = os.path.join(base_dir, "queries.json")
-        if not os.path.exists(filepath):
-            self.queries = {}
-        else:
-            with open(filepath, "r") as file:
-                self.queries = json.load(file)
+    def _format_character_response(self, name: str) -> str:
+        info = self.character_service.get_character_info(name)
+        return f"{name}: {info['description']} Special: {info['special']}" if info else "Character not found"
 
-    # Purpose: Cleans the input by removing extra punctuation and spaces and see if it matches with one of the questions in the query
-    # Effect: If the response exists in the query, return the expected response, otherwise return an empty string
-    def get_response(self, user_input: str) -> Optional[str]:
-        clean_input = re.sub(r'[^\w\s]', '', user_input).lower().strip()
-        if clean_input in self.queries:
-            return self.queries[clean_input]
-        for query, response in self.queries.items():
-            clean_query = re.sub(r'[^\w\s]', '', query).lower().strip()
-            if clean_input == clean_query:
-                return response
-        return ""
+    def _format_action_response(self, action: str) -> str:
+        info = self.action_service.get_action_info(action)
+        return f"{action}: {info['description']} Effect: {info['effect']}" if info else "Action not found"
 
 # SessionManager: class
 class SessionManager:
@@ -154,68 +152,32 @@ class QueryHandler(ABC):
     def handle(self, query: str, backend_manager: BackendManager, session_manager: SessionManager) -> str:
         pass
 
-# OrderTrackingHandler: class
-class OrderTrackingHandler(QueryHandler):
-    # Purpose: Handles order tracking requests from the user, requesting order ID if needed
-    # Effect: If the order ID has already been entered, do not ask for it again and to use the one in storage
-    def handle(self, query: str, backend_manager: BackendManager, session_manager: SessionManager) -> str:
-        if session_manager.get("order_id"):
-            order_id = session_manager.get("order_id")
-            return backend_manager.process_request("order", order_id)
-        
-        if session_manager.get("awaiting_order_id"):
-            session_manager.set("order_id", query)
-            session_manager.set("awaiting_order_id", False)
-            return backend_manager.process_request("order", query)
-        
-        session_manager.set("awaiting_order_id", True)
-        return ResponseFactory.get_random_response("order_id_request")
+class CharacterInfoHandler(QueryHandler):
+    def handle(self, query: str, backend: BackendManager, session: SessionManager) -> str:
+        char_name = self._extract_character(query)
+        if char_name:
+            return backend.process_request("character", char_name)
+        return "Which character would you like information about?"
 
-# RefundHandler: class
-class RefundHandler(QueryHandler):
-    # Purpose: Handles the refund requests from the user, requesting order ID if needed
-    # Effect: If the order ID has already been entered, do not ask for it again and to use the one in storage
-    def handle(self, query: str, backend_manager: BackendManager, session_manager: SessionManager) -> str:
-        if session_manager.get("order_id"):
-            order_id = session_manager.get("order_id")
-            session_manager.set("awaiting_refund_reason", True)
-            return ResponseFactory.get_random_response("refund_reason_request")
-        
-        if session_manager.get("awaiting_order_id"):
-            session_manager.set("awaiting_order_id", False)
-            session_manager.set("order_id", query)
-            session_manager.set("awaiting_refund_reason", True)
-            return ResponseFactory.get_random_response("refund_reason_request")
-            
-        session_manager.set("awaiting_order_id", True)
-        return ResponseFactory.get_random_response("order_id_request")
+    def _extract_character(self, query: str) -> Optional[str]:
+        characters = ['Gojo', 'Megumi', 'Nanami', 'Nobara', 'Sukuna']
+        return next((c for c in characters if c.lower() in query.lower()), None)
 
-# RefundReasonHandler: class
-class RefundReasonHandler(QueryHandler):
-    # Purpose: Process the refund reason after an order ID is provided
-    # Effect: Completes the refund process with the provided reason once the order ID is inputted or in storage
-    def handle(self, query: str, backend_manager: BackendManager, session_manager: SessionManager) -> str:
-        if session_manager.get("awaiting_refund_reason"):
-            order_id = session_manager.get("order_id", "")
-            refund_reason = query.lower()
-            
-            session_manager.pop("awaiting_refund_reason", None)
-            session_manager.pop("awaiting_order_id", None)
-            session_manager.pop("refund", None)
-            
-            return backend_manager.process_request("refund", order_id, refund_reason)
-        return ResponseFactory.get_random_response("order_id_request")
+class ActionInfoHandler(QueryHandler):
+    def handle(self, query: str, backend: BackendManager, session: SessionManager) -> str:
+        action = self._extract_action(query)
+        if action:
+            return backend.process_request("action", action)
+        return "Which action would you like to know about? (Attack/Defend/Special)"
 
-# ProductAvailabilityHandler: class
-class ProductAvailabilityHandler(QueryHandler):
-    # Purpose: Handles which products are available in the queries and in storage
-    # Effect: Extracts the product name from the query and checks if it is available
-    def handle(self, query: str, backend_manager: BackendManager, session_manager: SessionManager) -> str:
-        product_service = backend_manager.get_product_service()
-        product_name = product_service.extract_product_name(query)
-        if not product_name:
-            return ResponseFactory.get_random_response("product_request")
-        return backend_manager.process_request("product", product_name)
+    def _extract_action(self, query: str) -> Optional[str]:
+        actions = ['Attack', 'Defend', 'Special']
+        return next((a for a in actions if a.lower() in query.lower()), None)
+
+class GameAdviceHandler(QueryHandler):
+    def handle(self, query: str, backend: BackendManager, session: SessionManager) -> str:
+        return backend.process_request("advice")
+
 
 # LiveAgentHandler: class
 class LiveAgentHandler(QueryHandler):
@@ -279,30 +241,6 @@ class LiveAgentNotifier:
 class ResponseFactory:
     # Purpose: Response templates and provides random selections to manage templates using the flyweight pattern
     _response_pools: Dict[str, List[str]] = {
-        "order_id_request": [
-            "Please enter your order ID.",
-            "I'll need your order ID to check that for you.",
-            "Could you provide your order ID so I can look that up?",
-            "What's your order ID? I'll track that for you right away."
-        ],
-        "refund_reason_request": [
-            "Why are you returning the product? (e.g., defective, wrong item, changed mind)",
-            "Could you tell me the reason for your return?",
-            "What seems to be the issue with your product?",
-            "Please specify why you're requesting a refund."
-        ],
-        "product_request": [
-            "Please specify which product you're looking for.",
-            "Which product would you like to check availability for?",
-            "I'd be happy to check stock for you. Which item are you interested in?",
-            "Could you tell me the name of the product you're asking about?"
-        ],
-        "live_agent_connect": [
-            "Connecting you to a live agent now...",
-            "I'll transfer you to a customer service representative right away.",
-            "Let me connect you with one of our specialists.",
-            "I'm bringing in a professional agent now to help you with this."
-        ],
         "default_response": [
             "I'm not sure about that. Let me check with our team and get back to you.",
             "I don't have that information at the moment. Please try asking something else.",
@@ -328,93 +266,40 @@ class ResponseFactory:
 # region Factory Pattern
 # endregion
 
-# QueryManager: class
+# Updated Query Manager
 class QueryManager:
-    # Purpose: Create appropriate query handles and handles instances by returning the correct handler using the factory pattern
     def __init__(self) -> None:
-        self.handlers: Dict[str, QueryHandler] = {
-            "order": OrderTrackingHandler(),
-            "refund": RefundHandler(),
-            "refund_reason": RefundReasonHandler(),
-            "product": ProductAvailabilityHandler(),
-            "live_agent": LiveAgentHandler()
+        self.handlers = {
+            "character_info": CharacterInfoHandler(),
+            "action_info": ActionInfoHandler(),
+            "game_advice": GameAdviceHandler()
         }
 
-    # Purpose: Provides the correct instance of a handler based on the query type
-    # Effect: If it exists return the corresponding query handler, otherwise, return the default handler
-    def get_handler(self, query_type: str) -> QueryHandler:
-        return self.handlers.get(query_type, DefaultHandler())
+    def get_handler(self, intent: str) -> QueryHandler:
+        return self.handlers.get(intent, DefaultHandler())
 
-# IntentRecognitionService: class
 class IntentRecognitionService:
-    # Purpose: Analyze the user's input to determine their intent
-    # Effect: Categorizes queries into the predefined intent types based on synonym matching
     def __init__(self):
-        self._intent_phrases: Dict[str, List[str]] = {
-            "order": [
-                "where is my order", "track my package", "track my order", "order status",
-                "delivery status", "shipping status", "where's my order", "when will my order arrive", 
-                "check my order", "find my order", "locate my order", "where is my delivery", 
-                "what's the status of my order", "has my order been delivered", "package tracking",
-                "delivery tracking", "shipment location", "order whereabouts", "delivery timeline",
-                "track shipment", "delivery information", "shipping update", "when will it arrive",
-                "expected delivery", "delivery time", "package location", "is my order on the way"
+        self._intent_phrases = {
+            "character_info": [
+                "tell me about", "character info", "what does", "do?",
+                "abilities", "special move", "stats"
             ],
-            "refund": [
-                "return my product", "refund", "return", "refund request", "i want to return", "i want a refund", 
-                "send back my order", "cancel my order", "i don't want my order anymore", 
-                "return policy", "how do i return", "product return", "money back", "return process",
-                "refund eligibility", "return authorization", "return procedure", "cancel purchase",
-                "wrong item", "defective product", "damaged product", "not satisfied", "money refund",
-                "exchange item", "replacement", "return label", "return merchandise", "cancel transaction"
+            "action_info": [
+                "how does work", "what is", "action",
+                "attack do", "defend do", "special do"
             ],
-            "product": [
-                "is the product available", "availability", "stock status", "do you have", 
-                "in stock", "check inventory", "is there stock for", "can i buy", 
-                "is the item available", "when will you restock", "product in stock",
-                "inventory check", "still selling", "available for purchase", "available to buy",
-                "can I order", "do you sell", "looking for", "searching for", "when will you have",
-                "product availability", "back in stock", "out of stock", "current inventory",
-                "stock levels", "product supply", "available units", "stock quantity"
-            ],
-            "live_agent": [
-                "talk to a human", "customer support", "need help", "help with my order", 
-                "speak to a representative", "customer service", "agent", "human support", 
-                "connect me with", "talk to someone", "real person", "live support",
-                "representative", "supervisor", "customer care", "human assistance",
-                "speak to a person", "real agent", "connect to staff", "need a human",
-                "talk to a person", "live chat", "customer agent", "help desk", "service desk",
-                "speak with agent", "customer rep", "talk to manager", "service representative"
+            "game_advice": [
+                "tips", "advice", "strategy", "should I",
+                "recommend", "best way", "how to win"
             ]
         }
 
-    # Purpose: Analyzes the user's input to determine the most appropriate intent category
-    # Effect: Cleans the user's input and searches the known intent phrases to then handle the special cases
-    def recognize_intent(self, user_input: str, product_list: List[str], queries: Dict) -> str:
-        clean_input = re.sub(r'[^\w\s]', '', user_input.lower()).strip()
-        
-        if clean_input in queries:
-            if "order" in clean_input or "track" in clean_input or "delivery" in clean_input:
-                return "order"
-            if "refund" in clean_input or "return" in clean_input:
-                return "refund"
-            if "product" in clean_input or "stock" in clean_input:
-                return "product"
-            if "agent" in clean_input or "human" in clean_input:
-                return "live_agent"
-            
+    def recognize_intent(self, query: str) -> str:
+        query_lower = query.lower()
         for intent, phrases in self._intent_phrases.items():
-            for phrase in phrases:
-                if phrase in clean_input:
-                    return intent
-                
-        if any(product.lower() in clean_input for product in product_list):
-            return "product"       
-        if any(term in clean_input for term in ["stock", "available", "inventory"]):
-            return "product"
-        if "track" in clean_input and ("package" in clean_input or "order" in clean_input):
-            return "order"
-        
+            if any(phrase in query_lower for phrase in phrases):
+                return intent
         return "unknown"
 
 # SentimentAnalyzer: class
@@ -449,7 +334,6 @@ class SentimentAnalyzer:
 class Chatbot:
     # Purpose: Simple interface to control all components to process user queries and generate appropriate responses using the facade pattern
     def __init__(self) -> None:
-        self.query_db = QueryDatabase()
         self.backend_manager = BackendManager()
         self.query_manager = QueryManager()
         self.session_manager = SessionManager()
@@ -491,14 +375,8 @@ class Chatbot:
             LiveAgentNotifier.notify_agents(f"Customer with negative sentiment: {query}")
             return ResponseFactory.get_random_response("negative_sentiment")
         
-        # Check for response in database
-        db_response = self.query_db.get_response(query)
-        if db_response:
-            return db_response
-        
         # Determine intent and handle query
-        product_list = self.backend_manager.get_product_service().get_product_list()
-        intent = self.intent_service.recognize_intent(query, product_list, self.query_db.queries)
+        intent = self.intent_service.recognize_intent(query)
         handler = self.query_manager.get_handler(intent)
         return handler.handle(query, self.backend_manager, self.session_manager)
 
