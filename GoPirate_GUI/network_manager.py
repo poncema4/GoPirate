@@ -11,7 +11,7 @@ from JJK_Game.battle_manager import BattleManager
 from JJK_Game.character_factory import CharacterFactory
 
 class NetworkManager:
-    def __init__(self, host='localhost', port=12345):
+    def __init__(self, host='0.0.0.0', port=12345):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((host, port))
         self.server_socket.listen(5)

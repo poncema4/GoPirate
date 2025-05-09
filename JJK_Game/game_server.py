@@ -4,7 +4,7 @@ from threading import Thread, Lock
 from JJK_Game.battle_manager import BattleManager
 from JJK_Game.character_factory import CharacterFactory
 
-HOST = 'localhost'
+HOST = '0.0.0.0'
 PORT = 5555
 MAX_PLAYERS = 5
 
