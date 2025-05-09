@@ -20,7 +20,9 @@ class GameDataLoader:
 # Game Services
 class CharacterService:
     def __init__(self, data_file: str = 'characters.json'):
-        data = GameDataLoader.load_json(data_file)
+        script_dir = os.path.dirname(__file__)
+        file_path = os.path.join(script_dir, data_file)
+        data = GameDataLoader.load_json(file_path)
         self.characters = data.get('characters', {})
 
     def get_character_info(self, name: str) -> dict:
@@ -55,7 +57,9 @@ class CharacterService:
 
 class ActionService:
     def __init__(self, data_file: str = 'game_config.json'):
-        data = GameDataLoader.load_json(data_file)
+        script_dir = os.path.dirname(__file__)
+        file_path = os.path.join(script_dir, data_file)
+        data = GameDataLoader.load_json(file_path)
         self.actions = data.get('actions', {})
 
     def get_action_info(self, action: str) -> Dict:
@@ -76,10 +80,12 @@ class ActionService:
 
 class GameStrategyService:
     def __init__(self, data_file: str = 'game_config.json'):
-        data = GameDataLoader.load_json(data_file)
+        script_dir = os.path.dirname(__file__)
+        file_path = os.path.join(script_dir, data_file)
+        data = GameDataLoader.load_json(file_path)
         self.strategies = data.get('strategies', [])
 
-    def get_random_strategy(self) -> str:
+    def get_advice(self) -> str:
         """Get a random strategy tip"""
         return random.choice(self.strategies) if self.strategies else "No strategies available"
 
@@ -110,8 +116,37 @@ class BackendManager:
         return "Request not supported."
 
     def _format_character_response(self, name: str) -> str:
-        info = self.character_service.get_character_info(name)
-        return f"{name}: {info['description']} Special: {info['special']}" if info else "Character not found"
+        stats = self.character_service.get_character_info(name)
+        lines = []
+
+        lines.append(f"\nDescription: {stats['description']}")
+        lines.append("=" * 40 + "\n")
+
+        lines.append(f"=== {name} ===")
+        lines.append(f"Type: {stats['type']}")
+        lines.append(f"HP: {stats['hp']}\n")
+
+        lines.append("Attack:")
+        lines.append(f"  Name       : {stats['attack']['name']}")
+        lines.append(f"  Description: {stats['attack']['description']}")
+        lines.append(f"  Damage     : {stats['attack']['damage']}\n")
+
+        lines.append("Defense:")
+        lines.append(f"  Name       : {stats['defense']['name']}")
+        lines.append(f"  Description: {stats['defense']['description']}")
+        lines.append(f"  Base       : {stats['defense']['base']}")
+        lines.append(f"  Boost      : {stats['defense']['boost']}\n")
+
+        lines.append("Special:")
+        lines.append(f"  Name       : {stats['special']['name']}")
+        lines.append(f"  Description: {stats['special']['description']}")
+        lines.append(f"  Cooldown   : {stats['special']['cooldown']}")
+        lines.append("  Effects    :")
+        for effect in stats['special']['effects']:
+            lines.append(f"    - {effect}")
+
+
+        return "\n".join(lines)
 
     def _format_action_response(self, action: str) -> str:
         info = self.action_service.get_action_info(action)
@@ -386,7 +421,7 @@ class Chatbot:
 # Client code
 if __name__ == "__main__":
     chatbot = Chatbot()
-    print("Welcome to the PirateEase Chatbot!")
+    print("Welcome to the PirateGo Chatbot!")
     print("Type 'bye' to exit or 'help' for assistance.")
     
     while True:
@@ -395,7 +430,7 @@ if __name__ == "__main__":
             print("Chatbot: Goodbye!")
             break
         elif user_input.lower() == "help":
-            print("Chatbot: You can ask me about your order status, refund requests, product availability, or connect you to a live agent.")
+            print("Chatbot: You can ask me about characters, actions, and advice.")
             continue
             
         response = chatbot.process_query(user_input)

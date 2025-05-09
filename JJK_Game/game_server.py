@@ -73,7 +73,6 @@ class GameServer:
 
                     if msg.get("type") == "join":
                         self.player_names[client_socket] = msg["player_name"]
-                        self.send_chat(f"{msg['player_name']} has joined the game.")
                         continue
 
                     msg["__client"] = client_socket
